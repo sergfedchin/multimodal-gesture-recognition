@@ -1,0 +1,32 @@
+timm
+opencv-python
+Pillow
+matplotlib
+numpy
+open3d
+scikit-learn
+git+https://github.com/EasternJournalist/utils3d.git@c5daf6f6c244d251f252102d09e9b7bcef791a38
+
+# Core dependencies
+numpy>=1.21.0
+Pillow>=9.0.0
+# torch>=2.0.0
+# torchvision>=0.15.0
+
+# Configuration
+toml>=0.10.2
+
+# YOLOv13 and object detection
+ultralytics>=8.0.0
+
+# Utility
+tqdm>=4.65.0
+scipy>=1.10.0
+
+# Optional but recommended
+# For CUDA support
+# torch==2.0.0+cu118 -f https://download.pytorch.org/whl/torch_stable.html
+# torchvision==0.15.0+cu118 -f https://download.pytorch.org/whl/torch_stable.html
+
+# For mixed precision training
+# apex  # Install from source if needed

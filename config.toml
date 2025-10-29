@@ -1,0 +1,95 @@
+[paths]
+# Path to the folder containing annotation JSON files
+annotations_folder = "./data/annotations"
+
+# Path to the gesture images folder (already extracted/unarchived)
+# This folder should contain the gesture images directly as *.png files
+# Example: "./data/gestures/call/" will contain all images for the "call" gesture
+gesture_folder = "./data/gestures/call"
+
+# Path to the output folder where processed data will be saved
+# All splits (train/test/val) will be saved together in the same gesture folder
+output_folder = "./data/processed"
+
+[yolov13]
+# YOLOv13 model variant: n (nano), s (small), l (large), x (xlarge)
+model_variant = "s"
+
+# Path to YOLOv13 pretrained weights (will download if not exists)
+model_weights = "./checkpoints/yolov13l.pt"
+
+# Confidence threshold for person detection
+confidence_threshold = 0.5
+
+# IoU threshold for NMS
+iou_threshold = 0.45
+
+# Batch size for inference
+batch_size = 64
+num_workers = 4
+
+# Input image size
+image_size = 640
+
+# Device for inference: "cuda", "cpu", or "cuda:0"
+device = "cuda"
+
+[pixel_perfect_depth]
+# Path to Pixel-Perfect Depth main checkpoint
+ppd_checkpoint = "./checkpoints/ppd.pth"
+
+inference_width=1024
+inference_height=768
+
+# Path to semantics checkpoint (Depth Anything V2)
+semantics_checkpoint = "./checkpoints/depth_anything_v2_vitl.pth"
+
+# Number of sampling steps for diffusion
+sampling_steps = 4
+
+# Batch size for depth estimation
+batch_size = 8
+
+# Device for inference
+device = "cuda"
+
+# Enable mixed precision (fp16) for faster inference
+use_fp16 = true
+
+[processing]
+# Minimum overlap ratio to select person bbox when multiple detected
+min_overlap_threshold = 0.1
+
+# Padding around person bbox (as fraction of bbox size)
+person_bbox_padding = 0.05
+
+# Minimum size for hand crops (in pixels)
+min_hand_size = 32
+
+# Image format for saving: "png" or "jpg"
+image_format = "png"
+
+# JPEG quality (if using jpg format)
+jpeg_quality = 95
+
+# Number of worker threads for parallel processing
+num_workers = 4
+
+# Show progress bars with tqdm
+show_progress = true
+
+[logging]
+# Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level = "INFO"
+
+# Log file path (empty string for no file logging)
+log_file = "./logs/processing.log"
+
+# Log format
+log_format = "[%(asctime)s] [%(levelname)s] %(message)s"
+
+# Date format for timestamps
+date_format = "%Y-%m-%d %H:%M:%S"
+
+# Enable colored console output
+colored_output = true

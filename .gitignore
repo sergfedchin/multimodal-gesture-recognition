@@ -1,0 +1,16 @@
+.*
+__*__
+*example*
+*.pth
+*.pt
+*.log
+*.pdf
+
+data/*
+prompt.md
+# yolov13/docker
+# yolov13/assets
+
+!.python-version
+!.gitignore
+!__init__.py
