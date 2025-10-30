@@ -1,5 +1,6 @@
 """Unified image processor that handles one image at a time to save memory."""
 
+import gc
 import logging
 from pathlib import Path
 from typing import Dict, List, Tuple, Any
@@ -10,6 +11,7 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
+from modules.data_saver import DataSaver
 from modules.depth_estimator import DepthEstimator
 
 logger = logging.getLogger('gesture_processing')
@@ -18,7 +20,7 @@ logger = logging.getLogger('gesture_processing')
 class UnifiedProcessor:
     """Processes images one-by-one: crop, depth estimation, and save."""
     
-    def __init__(self, config: Dict[str, Any], depth_model: Any, data_saver: Any):
+    def __init__(self, config: Dict[str, Any], depth_model: DepthEstimator, data_saver: DataSaver):
         """
         Initialize unified processor.
         
@@ -28,7 +30,7 @@ class UnifiedProcessor:
             data_saver: DataSaver instance for saving results
         """
         self.config = config
-        self.depth_model: DepthEstimator = depth_model
+        self.depth_model = depth_model
         self.data_saver = data_saver
         self.show_progress = config['processing'].get('show_progress', True)
         self.use_fp16 = config['pixel_perfect_depth'].get('use_fp16', True)
@@ -74,7 +76,7 @@ class UnifiedProcessor:
         else:
             pbar = image_paths
         
-        for img_path in pbar:
+        for i, img_path in enumerate(pbar):
             img_stem = img_path.stem
             
             # Check if we have person bbox and annotations
@@ -105,6 +107,9 @@ class UnifiedProcessor:
                 logger.error(f"Error processing {img_stem}: {str(e)}")
                 stats['skipped_images'].append(img_stem)
                 continue
+
+            if i % 100 == 0:
+                gc.collect()
         
         if self.show_progress and isinstance(pbar, tqdm):
             pbar.close()
@@ -161,7 +166,6 @@ class UnifiedProcessor:
         body_depth_map = self._estimate_depth(cropped_body_rgb)
         
         # Step 4: Save body RGB and depth
-        # full_id = f"{split_name}_{img_stem}"
         self.data_saver.save_body_data(img_stem, cropped_body_rgb, body_depth_map)
         
         # Step 5: Crop and save hands

@@ -13,7 +13,7 @@ output_folder = "./data/processed"
 
 [yolov13]
 # YOLOv13 model variant: n (nano), s (small), l (large), x (xlarge)
-model_variant = "s"
+model_variant = "l"
 
 # Path to YOLOv13 pretrained weights (will download if not exists)
 model_weights = "./checkpoints/yolov13l.pt"
@@ -68,6 +68,9 @@ min_hand_size = 32
 
 # Image format for saving: "png" or "jpg"
 image_format = "png"
+
+# Save all images not only as images in `image_format` but also as torch tensors (memory-intensive)
+save_torch = false
 
 # JPEG quality (if using jpg format)
 jpeg_quality = 95

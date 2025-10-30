@@ -65,11 +65,19 @@ def main():
             'splits': {}
         }
         
+        depth_estimator = DepthEstimator(config)
+        data_saver = DataSaver(config)
+        unified_processor = UnifiedProcessor(
+            config,
+            depth_estimator.get_model(),
+            data_saver
+        )
         for split_name, split_image_paths in split_images.items():
             if not split_image_paths:
                 logger.warning(f"No images found for split '{split_name}', skipping")
                 continue
             
+            gc.collect()
             logger.info("=" * 80)
             logger.info(f"PROCESSING SPLIT: {split_name.upper()}")
             logger.info("=" * 80)
@@ -98,20 +106,12 @@ def main():
             logger.info("-" * 80)
             
             # Initialize unified processor
-            depth_estimator = DepthEstimator(config)
-            data_saver = DataSaver(config)
-            unified_processor = UnifiedProcessor(
-                config,
-                depth_estimator.get_model(),
-                data_saver
-            )
             split_stats = unified_processor.process_images(
                 split_image_paths,
                 person_bboxes,
                 split_annotations,
                 split_name
             )
-            del depth_estimator, unified_processor
             gc.collect()
             
             # Update total stats
