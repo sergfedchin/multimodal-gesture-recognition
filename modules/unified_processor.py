@@ -231,6 +231,8 @@ class UnifiedProcessor:
                     depth, _ = self.depth_model.infer_image(image_cv)
             else:
                 depth, _ = self.depth_model.infer_image(image_cv)
+
+        logger.info(f"For image of shape {np.array(image).shape} depth map has shape {depth.shape}")
         
         # Resize depth to original image size
         depth = F.interpolate(

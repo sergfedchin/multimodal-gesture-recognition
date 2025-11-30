@@ -5,7 +5,10 @@ annotations_folder = "./data/annotations"
 # Path to the gesture images folder (already extracted/unarchived)
 # This folder should contain the gesture images directly as *.png files
 # Example: "./data/gestures/call/" will contain all images for the "call" gesture
-gesture_folder = "./data/gestures/call"
+# BUT NOT FOR DOCKER: in Docker it is considered the base folder fow all gestures 
+# and gesture name is in env var GESTURE_NAME
+gesture_folder = "./data/gestures/no_gesture"
+is_docker = false
 
 # Path to the output folder where processed data will be saved
 # All splits (train/test/val) will be saved together in the same gesture folder

@@ -1,5 +1,6 @@
 """Configuration loader for the gesture processing pipeline."""
 
+import os
 from pathlib import Path
 from typing import Dict, Any
 import toml
@@ -26,7 +27,7 @@ class ConfigLoader:
         config_file = Path(config_path)
         
         if not config_file.exists():
-            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+            raise FileNotFoundError(f"Configuration file not found: {config_file.absolute()}")
         
         try:
             config = toml.load(config_file)
@@ -92,7 +93,10 @@ class ConfigLoader:
         path_keys = ['annotations_folder', 'gesture_folder', 'output_folder', 'temp_folder']
         for key in path_keys:
             if key in config['paths']:
-                config['paths'][key] = Path(config['paths'][key])
+                if key == 'gesture_folder' and config['paths']['is_docker']:
+                    config['paths'][key] = Path(config['paths'][key]) / os.environ.get('GESTURE_NAME', 'like')
+                else:
+                    config['paths'][key] = Path(config['paths'][key])
         
         if 'model_weights' in config['yolov13']:
             config['yolov13']['model_weights'] = Path(config['yolov13']['model_weights'])

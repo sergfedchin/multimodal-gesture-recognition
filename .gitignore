@@ -8,8 +8,8 @@ __*__
 
 data/*
 prompt.md
-# yolov13/docker
-# yolov13/assets
+yolov13
+*.tar
 
 !.python-version
 !.gitignore
