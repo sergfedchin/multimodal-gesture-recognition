@@ -127,7 +127,7 @@ class Trainer:
         logger.info(f"Gradient clipping enabled with max norm: {self.gradient_clip_norm}")
 
         # Directories
-        self.output_dir = (
+        self.output_dir: Path = (
             Path(config["logging"]["output_dir"]) / config["logging"]["experiment_name"]
         )
         self.output_dir.mkdir(parents=True, exist_ok=True)

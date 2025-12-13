@@ -191,12 +191,45 @@ class Evaluator:
             output_dict=True,
         )
 
-        logger.info(f"\nOverall Accuracy: {metrics['overall_accuracy']:.4f}")
+        logger.info(f"Overall Accuracy: {metrics['overall_accuracy']:.4f}")
         logger.info(f"Macro F1: {metrics['macro_f1']:.4f}")
         logger.info(f"Weighted F1: {metrics['weighted_f1']:.4f}")
 
         return metrics
 
+    
+    def visualize_results(self, results: Dict, output_dir: Path):
+        """
+        Create and save visualizations.
+        
+        Args:
+            results: Results dictionary from evaluate()
+            output_dir: Directory to save visualizations
+        """
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 1. Confusion Matrix
+        self._plot_confusion_matrix(
+            results["confusion_matrix"],
+            output_dir / "confusion_matrix.png"
+        )
+        
+        # 2. Per-class metrics
+        self._plot_per_class_metrics(
+            results["per_class"],
+            output_dir / "per_class_metrics.png"
+        )
+        
+        # 3. Top errors
+        self._plot_top_errors(
+            results["all_preds"],
+            results["all_labels"],
+            results["all_probs"],
+            output_dir / "top_errors.png"
+        )
+        
+        logger.info(f"Visualizations saved to {output_dir}")
     
     def _plot_confusion_matrix(self, cm: np.ndarray, save_path: Path):
         """Plot and save confusion matrix"""
