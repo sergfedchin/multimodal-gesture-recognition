@@ -1,0 +1,129 @@
+# Configuration for multi-modal hand gesture classification with VSSD
+# This config allows flexible experiments with RGB, depth, and fusion approaches
+
+[dataset]
+# Paths to parquet metadata files
+train_parquet = "/home/serg_fedchn/Homework/thesis/data/processed_hands/parquet/train.parquet"
+val_parquet = "/home/serg_fedchn/Homework/thesis/data/processed_hands/parquet/val.parquet"
+test_parquet = "/home/serg_fedchn/Homework/thesis/data/processed_hands/parquet/test.parquet"
+data_root = "/home/serg_fedchn/Homework/thesis/data/processed_hands/images"  # Root directory containing rgb/ and depth/ subdirectories
+
+# Data sampling for faster experiments
+# Set to 1.0 to use full dataset, or 0.1 for 10% subsample
+train_subsample = 0.1
+val_subsample = 1
+test_subsample = 1
+
+# Number of workers for data loading
+num_workers = 8
+
+[model]
+# Input modality: "rgb", "depth", or "fusion"
+modality = "rgb"
+
+# VSSD variant: "micro", "tiny", "small", "base"
+vssd_variant = "small"
+
+# For fusion mode: how to combine RGB and depth features
+# Options: "concat", "addition", "weighted_sum", "gated_fusion"
+fusion_method = "gated_fusion"
+
+# Image dimensions (VSSD typically uses 224x224)
+image_size = 224
+
+# Number of gesture classes
+num_classes = 34
+
+# Whether to use pretrained ImageNet weights
+pretrained = true
+
+# Dropout rate for regularization
+dropout = 0.1
+
+# VSSD integration
+vssd_repo_path = "/home/serg_fedchn/Homework/thesis/VSSD"  # Absolute path to cloned VSSD repo
+pretrained_ckpt = ""  # Optional: path to pretrained .pth file (leave empty to train from scratch)
+# Example pretrained checkpoints from VSSD repo (download from Hugging Face):
+# - vssd_tiny_e300_with_mesa.pth
+# - vssd_small_e300_with_mesa.pth  
+# - vssd_base_e300_with_mesa.pth
+
+[training]
+# Training hyperparameters
+batch_size = 32
+num_epochs = 100
+learning_rate = 5e-5
+weight_decay = 1e-4
+
+seed = 42
+
+# Optimizer: "adam", "adamw", "sgd"
+optimizer = "adamw"
+
+# Learning rate scheduler: "cosine", "linear", "exponential", "step"
+scheduler = "cosine"
+warmup_epochs = 5
+
+# Loss function
+loss = "cross_entropy"
+
+# Mixed precision training
+mixed_precision = true
+
+# Gradient accumulation steps (for effective larger batch sizes)
+gradient_accumulation_steps = 1
+gradient_clip_norm = 1.0
+
+[training.early_stopping]
+enabled = true
+patience = 5  # Stop if no improvement for 15 epochs
+min_delta = 0.001  # Minimum improvement threshold
+mode = "min"  # 'min' for loss (lower is better), 'max' for accuracy/F1 (higher is better)
+monitor = "loss"  # Which metric to monitor: 'loss', 'accuracy', or 'f1'
+
+[evaluation]
+# Metrics to compute during training
+# Validation metrics subset - use a SMALLER stratified sample for faster metrics computation
+val_metrics_subset_size = 5000  # Absolute number of samples (0 = use full validation set)
+metrics_compute_interval = 5  # Compute detailed metrics every N epochs
+
+# Metrics to track: "accuracy", "f1", "precision", "recall", "confusion_matrix"
+metrics = ["accuracy", "f1"]
+
+# F1 score averaging: "macro", "micro", "weighted"
+f1_average = "weighted"
+
+[augmentation]
+# Data augmentation settings
+enable_augmentation = true
+random_crop = false  # VSSD expects 224x224
+random_flip = true
+random_rotation = true
+rotation_degrees = 10
+color_jitter = true
+color_jitter_brightness = 0.2
+color_jitter_contrast = 0.2
+color_jitter_saturation = 0.2
+color_jitter_hue = 0.1
+random_erasing = false
+erasing_probability = 0.1
+
+[logging]
+# Logging and checkpointing
+output_dir = "./outputs"
+experiment_name = "vssd_small_rgb"
+log_interval = 50  # Log every N batches
+save_interval = 1  # Save checkpoint every N epochs
+save_best = true  # Save best checkpoint based on validation accuracy
+checkpoints_keep = 3  # Keep only top 3 checkpoints
+
+[hardware]
+# Hardware acceleration
+device = "cuda"  # "cuda" or "cpu"
+num_gpus = 1
+use_amp = true  # Automatic Mixed Precision
+pin_memory = true  # Pin memory for faster data loading
+
+# For distributed training (if using multiple GPUs/nodes)
+distributed = false
+backend = "nccl"
