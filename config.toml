@@ -22,7 +22,7 @@ num_workers = 8
 modality = "rgb"
 
 # VSSD variant: "micro", "tiny", "small", "base"
-vssd_variant = "small"
+vssd_variant = "base"
 
 # For fusion mode: how to combine RGB and depth features
 # Options: "concat", "addition", "weighted_sum", "gated_fusion"
@@ -111,7 +111,7 @@ erasing_probability = 0.1
 [logging]
 # Logging and checkpointing
 output_dir = "./outputs"
-experiment_name = "vssd_small_rgb"
+experiment_name = "vssd_base_rgb"
 log_interval = 50  # Log every N batches
 save_interval = 1  # Save checkpoint every N epochs
 save_best = true  # Save best checkpoint based on validation accuracy

@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+import pandas as pd
+
 from data_loader import create_dataloaders
 from evaluator import Evaluator
 from models import build_model
@@ -170,8 +172,6 @@ def main(
     evaluator.save_results_json(results, results_json_path)
 
     # Print summary
-    import pandas as pd
-
     logger.info("=" * 80)
     logger.info("FINAL RESULTS SUMMARY")
     logger.info("=" * 80)
@@ -188,7 +188,7 @@ def main(
             f"  {row['class']}: Acc={row['accuracy']:.4f}, F1={row['f1']:.4f}, Count={row['count']}"
         )
 
-    logger.info(f"\nResults saved to: {eval_dir}")
+    logger.info(f"Results saved to: {eval_dir}")
     logger.info("=" * 80)
     logger.info("Training pipeline completed successfully!")
 
