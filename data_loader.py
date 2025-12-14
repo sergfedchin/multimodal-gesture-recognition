@@ -312,6 +312,8 @@ def create_dataloaders(
         num_workers=config["dataset"]["num_workers"],
         pin_memory=config["hardware"]["pin_memory"],
         drop_last=drop_last_train,
+        persistent_workers=True,
+        prefetch_factor=4,
     )
     
     val_loader = DataLoader(

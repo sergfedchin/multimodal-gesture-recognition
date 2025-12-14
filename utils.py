@@ -50,7 +50,8 @@ def setup_device(config: dict) -> torch.device:
     """Setup GPU/CPU device"""
     if config["hardware"]["device"] == "cuda" and torch.cuda.is_available():
         device = torch.device("cuda")
-        logger.info(f"Using CUDA device. GPUs available: {torch.cuda.device_count()}")
+        logger.info(f"GPUs available: {torch.cuda.device_count()}")
+        logger.info(f"Using CUDA device {torch.cuda.get_device_name(0)} ({torch.cuda.get_device_properties(0).total_memory / (1024 ** 3):.1f}GB VRAM)")
         if config["hardware"]["num_gpus"] > 1:
             logger.warning("Multi-GPU training not yet implemented. Using single GPU.")
     else:

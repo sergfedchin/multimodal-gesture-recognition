@@ -10,16 +10,16 @@ data_root = "/home/serg_fedchn/Homework/thesis/data/processed_hands/images"  # R
 
 # Data sampling for faster experiments
 # Set to 1.0 to use full dataset, or 0.1 for 10% subsample
-train_subsample = 0.1
-val_subsample = 1
-test_subsample = 1
+train_subsample = 0.02
+val_subsample = 0.1
+test_subsample = 0.1
 
 # Number of workers for data loading
-num_workers = 8
+num_workers = 4
 
 [model]
 # Input modality: "rgb", "depth", or "fusion"
-modality = "rgb"
+modality = "depth"
 
 # VSSD variant: "micro", "tiny", "small", "base"
 vssd_variant = "base"
@@ -50,7 +50,7 @@ pretrained_ckpt = ""  # Optional: path to pretrained .pth file (leave empty to t
 
 [training]
 # Training hyperparameters
-batch_size = 32
+batch_size = 64
 num_epochs = 100
 learning_rate = 5e-5
 weight_decay = 1e-4
@@ -111,7 +111,7 @@ erasing_probability = 0.1
 [logging]
 # Logging and checkpointing
 output_dir = "./outputs"
-experiment_name = "vssd_base_rgb"
+experiment_name = "vssd_micro_rgb_test"
 log_interval = 50  # Log every N batches
 save_interval = 1  # Save checkpoint every N epochs
 save_best = true  # Save best checkpoint based on validation accuracy
