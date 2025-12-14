@@ -18,6 +18,14 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
+try:
+    import gpustat
+    GPUSTAT_AVAILABLE = True
+except ImportError:
+    GPUSTAT_AVAILABLE = False
+    logger.warning("gpustat not available. Install with: pip install gpustat")
+
+
 
 class EarlyStopping:
     """
@@ -164,6 +172,24 @@ class Trainer:
 
         logger.info(f"Trainer initialized. Output dir: {self.output_dir}")
 
+    def _get_gpu_stats(self) -> dict:
+        """Get current GPU utilization and memory usage using gpustat"""
+        if not GPUSTAT_AVAILABLE or not torch.cuda.is_available():
+            return {}
+        
+        try:
+            stats = gpustat.GPUStatCollection.new_query()
+            gpu_id = self.device.index if self.device.index else 0
+            gpu = stats.gpus[gpu_id]
+            
+            return {
+                'GPU': f"{gpu.utilization}%",
+                'VRAM': f"{gpu.memory_used / 1024:.1f}/{gpu.memory_total / 1024:.1f}GB",
+            }
+        except Exception as e:
+            logger.warning(f"Error getting GPU stats: {e}")
+            return {}
+
     def _build_optimizer(self) -> optim.Optimizer:
         """Build optimizer from config"""
         opt_name = self.config["training"]["optimizer"].lower()
@@ -227,9 +253,10 @@ class Trainer:
         pbar = tqdm(
             train_loader,
             desc=f"[Epoch {self.current_epoch + 1}/{self.config['training']['num_epochs']}]",
-            ncols=120,
-            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
+            ncols=150,
+            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
             unit="batch",
+            smoothing=0.15
         )
 
         for batch_idx, batch in enumerate(pbar):
@@ -295,7 +322,10 @@ class Trainer:
             # Update progress bar
             avg_loss = total_loss / num_batches
             current_lr = self.optimizer.param_groups[0]["lr"]
-            pbar.set_postfix({"loss": f"{avg_loss:.4f}", "lr": f"{current_lr:.2e}"})
+
+            # Build postfix dict with GPU stats
+            postfix = {"loss": f"{avg_loss:.4f}"} | self._get_gpu_stats()
+            pbar.set_postfix(postfix)
 
             # Logging - use tqdm.write to avoid interfering with progress bar
             if (batch_idx + 1) % self.log_interval == 0:
@@ -355,10 +385,11 @@ class Trainer:
         pbar = tqdm(
             val_loader,
             desc="Validation",
-            ncols=100,
-            bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+            ncols=150,  # Increased from 100 to fit GPU stats
+            bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}{postfix}]",
             leave=True,
             unit="batch",
+            smoothing=0
         )
 
         for batch in pbar:
@@ -383,7 +414,8 @@ class Trainer:
             all_labels.extend(labels)
 
             # Update progress bar
-            pbar.set_postfix({"loss": f"{total_loss / num_batches:.4f}"})
+            postfix = {"loss": f"{total_loss / num_batches:.4f}"} | self._get_gpu_stats()
+            pbar.set_postfix(postfix)
 
         pbar.close()
 
