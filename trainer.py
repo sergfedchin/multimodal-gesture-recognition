@@ -26,7 +26,6 @@ except ImportError:
     logger.warning("gpustat not available. Install with: pip install gpustat")
 
 
-
 class EarlyStopping:
     """
     Early stopping to stop training when validation metric stops improving.
@@ -277,14 +276,24 @@ class Trainer:
                 loss = self.criterion(outputs, batch["label"])
                 loss = loss / self.accumulation_steps
 
-            # Check for NaN/inf
-            if torch.isnan(loss) or torch.isinf(loss):
-                logger.error(f"NaN/Inf loss detected at batch {batch_idx}!")
-                logger.error(f"  Outputs min/max: {outputs.min():.4f}/{outputs.max():.4f}")
-                logger.error(f"  Labels: {batch['label'][:10]}")
-                # Skip this batch
-                continue
+                # 1. Check for NaN/Inf loss
+                if torch.isnan(loss) or torch.isinf(loss):
+                    logger.error(f"NaN/Inf loss detected at batch {batch_idx}!")
+                    logger.error(f"Labels: {batch['label'][:10]}")
+                    
+                    # 2. Clean up
+                    self.optimizer.zero_grad(set_to_none=True)
+                    torch.cuda.empty_cache()
+                    
+                    # 3. Skip the step (Do NOT call scaler.update())
+                    continue 
 
+            if self.use_amp:
+                with torch.amp.autocast("cuda", enabled=False):
+                    outputs = outputs.float()  # Convert to fp32 for stability
+                if (batch_idx + 1) % self.log_interval == 0:
+                    logger.info(f"GradScaler scale: {self.scaler.get_scale():.2e},  growth_tracker={self.scaler._get_growth_tracker()}")
+            
             # Backward pass
             if self.use_amp:
                 self.scaler.scale(loss).backward()
@@ -294,6 +303,13 @@ class Trainer:
             total_loss += loss.item() * self.accumulation_steps
             num_batches += 1
 
+            if (batch_idx + 1) % self.log_interval == 0:
+                total_norm = torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), 
+                    max_norm=float('inf')  # Just measure, don't clip yet
+                )
+                logger.info(f"Gradient norm: {total_norm:.4f}")
+            
             # Optimizer step
             if (batch_idx + 1) % self.accumulation_steps == 0:
                 if self.use_amp:
@@ -460,8 +476,11 @@ class Trainer:
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
-            "metrics": clean_metrics,  # Use cleaned metrics
+            "metrics": clean_metrics,
             "config": self.config,
+            "early_stopping_counter": self.early_stopping.counter if self.early_stopping else 0,  # ← Add
+            "best_val_acc": self.best_val_acc,  # ← Add
+            "best_epoch": self.best_epoch,  # ← Add
         }
 
         checkpoint_path = self.checkpoint_dir / f"checkpoint_epoch_{epoch}.pt"
@@ -486,18 +505,32 @@ class Trainer:
     def load_checkpoint(self, checkpoint_path: str):
         """Load checkpoint"""
         checkpoint = torch.load(
-            checkpoint_path, 
+            checkpoint_path,
             map_location=self.device,
-            weights_only=False  # Required for PyTorch 2.6+ to load metrics with numpy objects
+            weights_only=False
         )
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        
+        # Restore training state
+        if self.early_stopping and "early_stopping_counter" in checkpoint:
+            self.early_stopping.counter = checkpoint["early_stopping_counter"]
+            self.early_stopping.best_score = checkpoint.get("metrics", {}).get("loss", None)
+        
+        if "best_val_acc" in checkpoint:
+            self.best_val_acc = checkpoint["best_val_acc"]
+        if "best_epoch" in checkpoint:
+            self.best_epoch = checkpoint["best_epoch"]
+        
         logger.info(f"Loaded checkpoint from {checkpoint_path}")
+        logger.info(f"  Best val acc so far: {self.best_val_acc:.4f} at epoch {self.best_epoch}")
+        
         return checkpoint["epoch"]
 
+
     def train(
-        self, train_loader, val_loader, val_metrics_loader: Optional[DataLoader] = None
+        self, train_loader, val_loader, val_metrics_loader: Optional[DataLoader] = None, start_epoch: int = 0
     ):
         """
         Full training loop.
@@ -506,16 +539,19 @@ class Trainer:
             train_loader: Training dataloader
             val_loader: Full validation dataloader
             val_metrics_loader: Optional smaller validation set for computing metrics during training
+            start_epoch: Epoch to start/resume from (0 for new training)
         """
         self.num_epochs = self.config["training"]["num_epochs"]
         metrics_interval = self.config["evaluation"]["metrics_compute_interval"]
-
+        
         logger.info("Starting training...")
         logger.info(f"Total epochs: {self.num_epochs}")
+        if start_epoch > 0:
+            logger.info(f"Resuming from epoch {start_epoch + 1}")
         logger.info(f"Training samples: {self.dataset_info['train_size']}")
         logger.info(f"Validation samples: {self.dataset_info['val_size']}")
 
-        for epoch in range(self.num_epochs):
+        for epoch in range(start_epoch, self.num_epochs):
             self.current_epoch = epoch
             logger.info("=" * 50)
             logger.info(f"Epoch {self.current_epoch + 1}/{self.num_epochs}")

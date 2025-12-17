@@ -3,23 +3,23 @@
 
 [dataset]
 # Paths to parquet metadata files
-train_parquet = "/home/serg_fedchn/Homework/thesis/data/processed_hands/parquet/train.parquet"
-val_parquet = "/home/serg_fedchn/Homework/thesis/data/processed_hands/parquet/val.parquet"
-test_parquet = "/home/serg_fedchn/Homework/thesis/data/processed_hands/parquet/test.parquet"
-data_root = "/home/serg_fedchn/Homework/thesis/data/processed_hands/images"  # Root directory containing rgb/ and depth/ subdirectories
+train_parquet = "/home/daryumin/Corpora/HaGRIDv2-annotations/train.parquet"
+val_parquet = "/home/daryumin/Corpora/HaGRIDv2-annotations/val.parquet"
+test_parquet = "/home/daryumin/Corpora/HaGRIDv2-annotations/test.parquet"
+data_root = "/home/daryumin/Corpora/HaGRIDv2-proc/images"  # Root directory containing rgb/ and depth/ subdirectories
 
 # Data sampling for faster experiments
 # Set to 1.0 to use full dataset, or 0.1 for 10% subsample
-train_subsample = 0.02
-val_subsample = 0.1
-test_subsample = 0.1
+train_subsample = 0.25
+val_subsample = 1
+test_subsample = 1
 
 # Number of workers for data loading
-num_workers = 4
+num_workers = 6
 
 [model]
 # Input modality: "rgb", "depth", or "fusion"
-modality = "depth"
+modality = "fusion"
 
 # VSSD variant: "micro", "tiny", "small", "base"
 vssd_variant = "base"
@@ -41,7 +41,7 @@ pretrained = true
 dropout = 0.1
 
 # VSSD integration
-vssd_repo_path = "/home/serg_fedchn/Homework/thesis/VSSD"  # Absolute path to cloned VSSD repo
+vssd_repo_path = "/home/daryumin/HandGestures_experiments/VSSD"  # Absolute path to cloned VSSD repo
 pretrained_ckpt = ""  # Optional: path to pretrained .pth file (leave empty to train from scratch)
 # Example pretrained checkpoints from VSSD repo (download from Hugging Face):
 # - vssd_tiny_e300_with_mesa.pth
@@ -50,9 +50,9 @@ pretrained_ckpt = ""  # Optional: path to pretrained .pth file (leave empty to t
 
 [training]
 # Training hyperparameters
-batch_size = 64
+batch_size = 96
 num_epochs = 100
-learning_rate = 5e-5
+learning_rate = 1e-5
 weight_decay = 1e-4
 
 seed = 42
@@ -84,8 +84,8 @@ monitor = "loss"  # Which metric to monitor: 'loss', 'accuracy', or 'f1'
 [evaluation]
 # Metrics to compute during training
 # Validation metrics subset - use a SMALLER stratified sample for faster metrics computation
-val_metrics_subset_size = 5000  # Absolute number of samples (0 = use full validation set)
-metrics_compute_interval = 5  # Compute detailed metrics every N epochs
+val_metrics_subset_size = 0  # Absolute number of samples (0 = use full validation set)
+metrics_compute_interval = 3  # Compute detailed metrics every N epochs
 
 # Metrics to track: "accuracy", "f1", "precision", "recall", "confusion_matrix"
 metrics = ["accuracy", "f1"]
@@ -111,8 +111,8 @@ erasing_probability = 0.1
 [logging]
 # Logging and checkpointing
 output_dir = "./outputs"
-experiment_name = "vssd_micro_rgb_test"
-log_interval = 50  # Log every N batches
+experiment_name = "vssd_base_fusion_25"
+log_interval = 100  # Log every N batches
 save_interval = 1  # Save checkpoint every N epochs
 save_best = true  # Save best checkpoint based on validation accuracy
 checkpoints_keep = 3  # Keep only top 3 checkpoints
