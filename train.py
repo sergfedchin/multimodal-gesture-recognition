@@ -17,6 +17,12 @@ from models import build_model
 from trainer import Trainer
 from utils import load_config, set_seed, setup_device
 
+# ============================================================
+# CUDA Memory Configuration - MUST BE SET BEFORE CUDA INIT
+# ============================================================
+import os
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
 
 def setup_logging(output_dir: Path, experiment_name: str):
     """
@@ -139,13 +145,14 @@ def main(
     trainer = Trainer(model, config, device, dataset_info)
 
     # Load checkpoint if provided
+    start_epoch = 0
     if checkpoint_path:
         start_epoch = trainer.load_checkpoint(checkpoint_path)
         logger.info(f"Resuming from epoch {start_epoch + 1}")
 
     # Training
     logger.info("Starting training...")
-    trainer.train(train_loader, val_loader, val_metrics_loader)
+    trainer.train(train_loader, val_loader, val_metrics_loader, start_epoch=start_epoch)
 
     # Load best checkpoint for evaluation
     best_checkpoint_path = trainer.checkpoint_dir / "best_model.pt"
