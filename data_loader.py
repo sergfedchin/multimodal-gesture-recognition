@@ -8,6 +8,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
@@ -15,6 +16,55 @@ from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import transforms
 
 logger = logging.getLogger(__name__)
+
+
+def mixup_data(
+    x: torch.Tensor, y: torch.Tensor, alpha: float = 0.2, device: str = "cuda"
+):
+    """
+    Mixup augmentation for a single modality.
+
+    Args:
+        x: Input images [B, C, H, W]
+        y: Labels [B]
+        alpha: Mixup interpolation strength
+        device: Device for computation
+
+    Returns:
+        mixed_x: Mixed images [B, C, H, W]
+        y_a: First labels [B]
+        y_b: Second labels [B]
+        lam: Mixing coefficient
+    """
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1.0
+
+    batch_size = x.size(0)
+    index = torch.randperm(batch_size).to(device)
+
+    mixed_x = lam * x + (1 - lam) * x[index]
+    y_a, y_b = y, y[index]
+
+    return mixed_x, y_a, y_b, lam
+
+
+def mixup_criterion(criterion, pred, y_a, y_b, lam):
+    """
+    Mixup loss function.
+
+    Args:
+        criterion: Loss function (e.g., CrossEntropyLoss)
+        pred: Model predictions [B, num_classes]
+        y_a: First labels [B]
+        y_b: Second labels [B]
+        lam: Mixing coefficient
+
+    Returns:
+        Mixed loss value
+    """
+    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
 
 
 class HandGestureDataset(Dataset):
@@ -191,58 +241,56 @@ def create_dataloaders(
 ) -> Tuple[DataLoader, DataLoader, DataLoader, DataLoader, Dict]:
     """
     Create train, validation, validation metrics, and test dataloaders with STRATIFIED subsampling.
-    
+
     Args:
         config: Configuration dictionary
         device: Device for tensors
         drop_last_train: Whether to drop incomplete batches in training
-        
+
     Returns:
         (train_loader, val_loader, val_metrics_loader, test_loader, dataset_info)
     """
-    
+
     # Load parquet files
     train_df = pd.read_parquet(config["dataset"]["train_parquet"])
     val_df = pd.read_parquet(config["dataset"]["val_parquet"])
     test_df = pd.read_parquet(config["dataset"]["test_parquet"])
-    
-    logger.info(f"Original dataset sizes: train={len(train_df)}, val={len(val_df)}, test={len(test_df)}")
-    
+
+    logger.info(
+        f"Original dataset sizes: train={len(train_df)}, val={len(val_df)}, test={len(test_df)}"
+    )
+
     # Apply STRATIFIED subsampling to preserve class distribution
     seed = config.get("seed", 42)
-    
+
     if config["dataset"]["train_subsample"] < 1.0:
         train_size = int(len(train_df) * config["dataset"]["train_subsample"])
         train_df, _ = train_test_split(
             train_df,
             train_size=train_size,
             stratify=train_df["label"],
-            random_state=seed
+            random_state=seed,
         )
         logger.info(f"Train set stratified subsample: {len(train_df)} samples")
-    
+
     if config["dataset"]["val_subsample"] < 1.0:
         val_size = int(len(val_df) * config["dataset"]["val_subsample"])
         val_df, _ = train_test_split(
-            val_df,
-            train_size=val_size,
-            stratify=val_df["label"],
-            random_state=seed
+            val_df, train_size=val_size, stratify=val_df["label"], random_state=seed
         )
         logger.info(f"Val set stratified subsample: {len(val_df)} samples")
-    
+
     if config["dataset"]["test_subsample"] < 1.0:
         test_size = int(len(test_df) * config["dataset"]["test_subsample"])
         test_df, _ = train_test_split(
-            test_df,
-            train_size=test_size,
-            stratify=test_df["label"],
-            random_state=seed
+            test_df, train_size=test_size, stratify=test_df["label"], random_state=seed
         )
         logger.info(f"Test set stratified subsample: {len(test_df)} samples")
-    
-    logger.info(f"After stratified subsampling: train={len(train_df)}, val={len(val_df)}, test={len(test_df)}")
-    
+
+    logger.info(
+        f"After stratified subsampling: train={len(train_df)}, val={len(val_df)}, test={len(test_df)}"
+    )
+
     # Create datasets
     train_dataset = HandGestureDataset(
         metadata_df=train_df,
@@ -252,7 +300,7 @@ def create_dataloaders(
         augmentation_cfg=config.get("augmentation", {}),
         device=device,
     )
-    
+
     val_dataset = HandGestureDataset(
         metadata_df=val_df,
         data_root=config["dataset"]["data_root"],
@@ -261,7 +309,7 @@ def create_dataloaders(
         augmentation_cfg=None,  # No augmentation for validation
         device=device,
     )
-    
+
     test_dataset = HandGestureDataset(
         metadata_df=test_df,
         data_root=config["dataset"]["data_root"],
@@ -270,40 +318,48 @@ def create_dataloaders(
         augmentation_cfg=None,  # No augmentation for testing
         device=device,
     )
-    
+
     # Create smaller validation metrics subset with STRATIFIED sampling for fast metrics during training
     val_metrics_subset_size = config["evaluation"].get("val_metrics_subset_size", 0)
-    
+
     if val_metrics_subset_size > 0 and val_metrics_subset_size < len(val_dataset):
-        logger.info(f"Creating stratified validation metrics subset of size {val_metrics_subset_size} for periodic detailed metrics")
-        
+        logger.info(
+            f"Creating stratified validation metrics subset of size {val_metrics_subset_size} for periodic detailed metrics"
+        )
+
         # Get labels for stratification
         val_labels = val_df["label"].tolist()
-        
+
         # Stratified sampling
         all_indices = list(range(len(val_dataset)))
         val_metrics_indices, _ = train_test_split(
             all_indices,
             train_size=val_metrics_subset_size,
             stratify=val_labels,
-            random_state=seed
+            random_state=seed,
         )
-        
+
         val_metrics_dataset = Subset(val_dataset, val_metrics_indices)
-        
+
         # Log class distribution verification
         subset_labels = [val_labels[i] for i in val_metrics_indices]
         original_dist = Counter(val_labels)
         subset_dist = Counter(subset_labels)
-        
+
         logger.info("Validation metrics subset class distribution:")
-        logger.info(f"  Full validation: {len(val_labels)} samples, {len(original_dist)} classes")
-        logger.info(f"  Metrics subset: {len(subset_labels)} samples, {len(subset_dist)} classes")
-        
+        logger.info(
+            f"  Full validation: {len(val_labels)} samples, {len(original_dist)} classes"
+        )
+        logger.info(
+            f"  Metrics subset: {len(subset_labels)} samples, {len(subset_dist)} classes"
+        )
+
     else:
         val_metrics_dataset = val_dataset
-        logger.info("Using full validation set for metrics computation (no separate subset)")
-    
+        logger.info(
+            "Using full validation set for metrics computation (no separate subset)"
+        )
+
     # Create dataloaders
     train_loader = DataLoader(
         train_dataset,
@@ -315,7 +371,7 @@ def create_dataloaders(
         persistent_workers=True,
         prefetch_factor=4,
     )
-    
+
     val_loader = DataLoader(
         val_dataset,
         batch_size=config["training"]["batch_size"],
@@ -324,7 +380,7 @@ def create_dataloaders(
         pin_memory=config["hardware"]["pin_memory"],
         drop_last=False,
     )
-    
+
     val_metrics_loader = DataLoader(
         val_metrics_dataset,
         batch_size=config["training"]["batch_size"],
@@ -333,7 +389,7 @@ def create_dataloaders(
         pin_memory=config["hardware"]["pin_memory"],
         drop_last=False,
     )
-    
+
     test_loader = DataLoader(
         test_dataset,
         batch_size=config["training"]["batch_size"],
@@ -342,7 +398,7 @@ def create_dataloaders(
         pin_memory=config["hardware"]["pin_memory"],
         drop_last=False,
     )
-    
+
     dataset_info = {
         "num_classes": len(train_dataset.gesture_classes),
         "gesture_classes": train_dataset.gesture_classes,
@@ -353,11 +409,15 @@ def create_dataloaders(
         "val_metrics_size": len(val_metrics_dataset),
         "test_size": len(test_dataset),
     }
-    
+
     logger.info("Final dataloader sizes:")
     logger.info(f"  Train: {dataset_info['train_size']} samples")
-    logger.info(f"  Validation (full): {dataset_info['val_size']} samples - for loss computation")
-    logger.info(f"  Validation (metrics): {dataset_info['val_metrics_size']} samples - for detailed metrics")
+    logger.info(
+        f"  Validation (full): {dataset_info['val_size']} samples - for loss computation"
+    )
+    logger.info(
+        f"  Validation (metrics): {dataset_info['val_metrics_size']} samples - for detailed metrics"
+    )
     logger.info(f"  Test: {dataset_info['test_size']} samples")
-    
+
     return train_loader, val_loader, val_metrics_loader, test_loader, dataset_info

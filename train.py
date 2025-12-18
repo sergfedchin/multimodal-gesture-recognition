@@ -20,8 +20,9 @@ from utils import load_config, set_seed, setup_device
 # ============================================================
 # CUDA Memory Configuration - MUST BE SET BEFORE CUDA INIT
 # ============================================================
-import os
-os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+# import os
+# os.environ['PYTORCH_ALLOC_CONF'] = 'expandable_segments:True'
+# os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
 
 def setup_logging(output_dir: Path, experiment_name: str):
