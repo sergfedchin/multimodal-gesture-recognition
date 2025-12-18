@@ -1,34 +1,49 @@
-# Configuration for multi-modal hand gesture classification with VSSD
+# Configuration for multi-modal hand gesture classification
 # This config allows flexible experiments with RGB, depth, and fusion approaches
 
 [dataset]
 # Paths to parquet metadata files
-train_parquet = "/home/daryumin/Corpora/HaGRIDv2-annotations/train.parquet"
-val_parquet = "/home/daryumin/Corpora/HaGRIDv2-annotations/val.parquet"
-test_parquet = "/home/daryumin/Corpora/HaGRIDv2-annotations/test.parquet"
-data_root = "/home/daryumin/Corpora/HaGRIDv2-proc/images"  # Root directory containing rgb/ and depth/ subdirectories
+# train_parquet = "/home/daryumin/Corpora/HaGRIDv2-annotations/train.parquet"
+# val_parquet = "/home/daryumin/Corpora/HaGRIDv2-annotations/val.parquet"
+# test_parquet = "/home/daryumin/Corpora/HaGRIDv2-annotations/test.parquet"
+# data_root = "/home/daryumin/Corpora/HaGRIDv2-proc/images"
+train_parquet = "/home/serg_fedchn/Homework/thesis/data/processed_hands/parquet/train.parquet"
+val_parquet = "/home/serg_fedchn/Homework/thesis/data/processed_hands/parquet/val.parquet"
+test_parquet = "/home/serg_fedchn/Homework/thesis/data/processed_hands/parquet/test.parquet"
+data_root = "/home/serg_fedchn/Homework/thesis/data/processed_hands/images"
 
 # Data sampling for faster experiments
-# Set to 1.0 to use full dataset, or 0.1 for 10% subsample
 train_subsample = 0.25
 val_subsample = 1
 test_subsample = 1
 
 # Number of workers for data loading
-num_workers = 6
+num_workers = 8
+
+[logging]
+output_dir = "./outputs"
+experiment_name = "resnet18_cross_attention_mixup_25"
+log_interval = 100
+save_interval = 1
+save_best = true
+checkpoints_keep = 3
 
 [model]
 # Input modality: "rgb", "depth", or "fusion"
 modality = "fusion"
 
-# VSSD variant: "micro", "tiny", "small", "base"
+# Architecture: "vssd", "resnet18", "resnet50", "vit"
+architecture = "resnet18"
+freeze_backbone = true  # NEW - freeze early layers!
+
+# VSSD variant: "micro", "tiny", "small", "base" (only used if architecture="vssd")
 vssd_variant = "base"
 
 # For fusion mode: how to combine RGB and depth features
-# Options: "concat", "addition", "weighted_sum", "gated_fusion"
-fusion_method = "gated_fusion"
+# Options: "concat", "addition", "weighted_sum", "gated_fusion", "adaptive_fusion", "cross_attention"
+fusion_method = "cross_attention"
 
-# Image dimensions (VSSD typically uses 224x224)
+# Image dimensions
 image_size = 224
 
 # Number of gesture classes
@@ -38,22 +53,20 @@ num_classes = 34
 pretrained = true
 
 # Dropout rate for regularization
-dropout = 0.1
+dropout = 0.5
 
-# VSSD integration
-vssd_repo_path = "/home/daryumin/HandGestures_experiments/VSSD"  # Absolute path to cloned VSSD repo
-pretrained_ckpt = ""  # Optional: path to pretrained .pth file (leave empty to train from scratch)
-# Example pretrained checkpoints from VSSD repo (download from Hugging Face):
-# - vssd_tiny_e300_with_mesa.pth
-# - vssd_small_e300_with_mesa.pth  
-# - vssd_base_e300_with_mesa.pth
+# VSSD integration (only used if architecture="vssd")
+# vssd_repo_path = "/home/serg_fedchn/Homework/thesis/VSSD"
+# vssd_repo_path = "/home/daryumin/HandGestures_experiments/VSSD"
+
+pretrained_ckpt = ""
 
 [training]
 # Training hyperparameters
-batch_size = 96
-num_epochs = 100
-learning_rate = 1e-5
-weight_decay = 1e-4
+batch_size = 256
+num_epochs = 50
+learning_rate = 3e-5
+weight_decay = 5e-4
 
 seed = 42
 
@@ -62,7 +75,7 @@ optimizer = "adamw"
 
 # Learning rate scheduler: "cosine", "linear", "exponential", "step"
 scheduler = "cosine"
-warmup_epochs = 5
+warmup_epochs = 2
 
 # Loss function
 loss = "cross_entropy"
@@ -72,58 +85,46 @@ mixed_precision = true
 
 # Gradient accumulation steps (for effective larger batch sizes)
 gradient_accumulation_steps = 1
-gradient_clip_norm = 1.0
+gradient_clip_norm = 5.0
 
 [training.early_stopping]
 enabled = true
-patience = 5  # Stop if no improvement for 15 epochs
-min_delta = 0.001  # Minimum improvement threshold
-mode = "min"  # 'min' for loss (lower is better), 'max' for accuracy/F1 (higher is better)
-monitor = "loss"  # Which metric to monitor: 'loss', 'accuracy', or 'f1'
+patience = 5
+min_delta = 0.001
+mode = "max"
+monitor = "accuracy"
 
 [evaluation]
-# Metrics to compute during training
-# Validation metrics subset - use a SMALLER stratified sample for faster metrics computation
-val_metrics_subset_size = 0  # Absolute number of samples (0 = use full validation set)
-metrics_compute_interval = 3  # Compute detailed metrics every N epochs
-
-# Metrics to track: "accuracy", "f1", "precision", "recall", "confusion_matrix"
+val_metrics_subset_size = 0
+metrics_compute_interval = 3
 metrics = ["accuracy", "f1"]
-
-# F1 score averaging: "macro", "micro", "weighted"
 f1_average = "weighted"
 
 [augmentation]
 # Data augmentation settings
 enable_augmentation = true
-random_crop = false  # VSSD expects 224x224
 random_flip = true
 random_rotation = true
-rotation_degrees = 10
+rotation_degrees = 15           # Increased from 10
 color_jitter = true
-color_jitter_brightness = 0.2
-color_jitter_contrast = 0.2
-color_jitter_saturation = 0.2
-color_jitter_hue = 0.1
-random_erasing = false
-erasing_probability = 0.1
+color_jitter_brightness = 0.3   # Increased from 0.2
+color_jitter_contrast = 0.3     # Increased from 0.2
+color_jitter_saturation = 0.3   # Increased from 0.2
+color_jitter_hue = 0.15         # Increased from 0.1
+random_erasing = true           # ENABLED (was false)
+erasing_probability = 0.3       # Increased from 0.1
 
-[logging]
-# Logging and checkpointing
-output_dir = "./outputs"
-experiment_name = "vssd_base_fusion_25"
-log_interval = 100  # Log every N batches
-save_interval = 1  # Save checkpoint every N epochs
-save_best = true  # Save best checkpoint based on validation accuracy
-checkpoints_keep = 3  # Keep only top 3 checkpoints
+# Mixup augmentation (applied in training loop)
+use_mixup = true                # NEW - enable Mixup
+mixup_alpha = 0.2               # NEW - Mixup interpolation strength
+
+# Label smoothing (reduces overconfidence)
+label_smoothing = 0.1           # NEW - prevents overconfident predictions
 
 [hardware]
-# Hardware acceleration
-device = "cuda"  # "cuda" or "cpu"
+device = "cuda"
 num_gpus = 1
-use_amp = true  # Automatic Mixed Precision
-pin_memory = true  # Pin memory for faster data loading
-
-# For distributed training (if using multiple GPUs/nodes)
+use_amp = true
+pin_memory = false
 distributed = false
 backend = "nccl"
