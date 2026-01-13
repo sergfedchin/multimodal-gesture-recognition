@@ -308,7 +308,7 @@ class Trainer:
             ncols=150,
             bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
             unit="batch",
-            smoothing=0.15,
+            smoothing=0,
         )
 
         for batch_idx, batch in enumerate(pbar):
