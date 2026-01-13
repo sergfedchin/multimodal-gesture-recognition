@@ -166,6 +166,27 @@ def main(
     evaluator = Evaluator(model, config, device, dataset_info)
     results = evaluator.evaluate(test_loader)
 
+    # Paper-style evaluation (image-level, 33 classes)
+    logger.info("="*80)
+    logger.info("Running paper-style evaluation (image-level, 33 classes)...")
+    logger.info("="*80)
+
+    paper_results = evaluator.evaluate_paper_style(
+        test_parquet_path=config["dataset"]["test_parquet"]
+    )
+    results.update(paper_results)
+
+    # Print comparison
+    logger.info("="*80)
+    logger.info("COMPARISON:")
+    logger.info("="*80)
+    logger.info(f"Hand-level accuracy (33 classes - without thumb_index2 class):  {results['overall_accuracy']:.4f}")
+    logger.info(f"Image-level accuracy (33 classes - without no_gesture class): {paper_results['paper_style_accuracy']:.2f}%")
+    logger.info(f"Number of test images: {paper_results['paper_style_num_images']}")
+    logger.info("="*80)
+
+    # Update results JSON with paper-style metrics
+
     # Visualize results
     logger.info("Generating visualizations...")
     eval_dir = (

@@ -23,13 +23,11 @@ def mixup_data(
 ):
     """
     Mixup augmentation for a single modality.
-
     Args:
         x: Input images [B, C, H, W]
         y: Labels [B]
         alpha: Mixup interpolation strength
         device: Device for computation
-
     Returns:
         mixed_x: Mixed images [B, C, H, W]
         y_a: First labels [B]
@@ -53,14 +51,12 @@ def mixup_data(
 def mixup_criterion(criterion, pred, y_a, y_b, lam):
     """
     Mixup loss function.
-
     Args:
         criterion: Loss function (e.g., CrossEntropyLoss)
         pred: Model predictions [B, num_classes]
         y_a: First labels [B]
         y_b: Second labels [B]
         lam: Mixing coefficient
-
     Returns:
         Mixed loss value
     """
@@ -79,6 +75,7 @@ class HandGestureDataset(Dataset):
         image_size: Target image size (assumed square)
         augmentation_cfg: Configuration for data augmentation
         device: Device to load tensors onto ("cpu" or "cuda")
+        merge_thumb_index: If True, merge thumb_index2 into thumb_index
     """
 
     def __init__(
@@ -89,21 +86,54 @@ class HandGestureDataset(Dataset):
         image_size: int = 224,
         augmentation_cfg: Optional[Dict] = None,
         device: str = "cuda",
+        merge_thumb_index: bool = True,  # NEW PARAMETER
     ):
-        self.metadata_df = metadata_df.reset_index(drop=True)
+        self.metadata_df = metadata_df.reset_index(drop=True).copy()  # Make a copy
         self.data_root = Path(data_root)
         self.modality = modality
         self.image_size = image_size
         self.device = device
+        self.merge_thumb_index = merge_thumb_index
 
-        # Create gesture label mapping
-        self.gesture_classes = sorted(metadata_df["gesture_class"].unique().tolist())
+        # IMPORTANT: Merge thumb_index2 into thumb_index BEFORE creating label mapping
+        if self.merge_thumb_index:
+            # Count before merge
+            original_thumb_index2_count = (
+                self.metadata_df["label"] == "thumb_index2"
+            ).sum()
+
+            # Replace thumb_index2 with thumb_index
+            self.metadata_df.loc[
+                self.metadata_df["label"] == "thumb_index2", "label"
+            ] = "thumb_index"
+
+            # Also update gesture_class column if it exists
+            if "gesture_class" in self.metadata_df.columns:
+                self.metadata_df.loc[
+                    self.metadata_df["gesture_class"] == "thumb_index2", "gesture_class"
+                ] = "thumb_index"
+
+            if original_thumb_index2_count > 0:
+                logger.info(
+                    f"✓ Merged {original_thumb_index2_count} samples from 'thumb_index2' into 'thumb_index'"
+                )
+
+        # Create gesture label mapping (now with merged labels)
+        self.gesture_classes = sorted(self.metadata_df["label"].unique().tolist())
         self.gesture_to_idx = {g: idx for idx, g in enumerate(self.gesture_classes)}
         self.idx_to_gesture = {idx: g for g, idx in self.gesture_to_idx.items()}
 
         logger.info(
             f"Dataset with {len(self.gesture_classes)} classes: {self.gesture_classes}"
         )
+
+        # Verify thumb_index2 is not in the class list
+        if "thumb_index2" in self.gesture_classes:
+            logger.warning(
+                "⚠️ thumb_index2 still present in gesture_classes! This should not happen."
+            )
+        else:
+            logger.info("✓ thumb_index2 successfully removed from class list")
 
         # Initialize augmentation
         self.augmentation_cfg = augmentation_cfg or {}
@@ -128,9 +158,11 @@ class HandGestureDataset(Dataset):
         if is_train and self.augmentation_cfg:
             if self.augmentation_cfg.get("random_flip", True):
                 augmentation.append(transforms.RandomHorizontalFlip(p=0.5))
+
             if self.augmentation_cfg.get("random_rotation", True):
                 degrees = self.augmentation_cfg.get("rotation_degrees", 10)
                 augmentation.append(transforms.RandomRotation(degrees))
+
             if self.augmentation_cfg.get("color_jitter", True):
                 augmentation.append(
                     transforms.ColorJitter(
@@ -146,6 +178,7 @@ class HandGestureDataset(Dataset):
                         hue=self.augmentation_cfg.get("color_jitter_hue", 0.1),
                     )
                 )
+
         if self.image_size:
             augmentation.extend(
                 [
@@ -188,7 +221,6 @@ class HandGestureDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """
         Get a single sample.
-
         Returns:
             Dictionary with keys:
             - "rgb": [3, H, W] if modality in ["rgb", "fusion"]
@@ -199,9 +231,7 @@ class HandGestureDataset(Dataset):
         row = self.metadata_df.iloc[idx]
 
         output = {
-            "label": torch.tensor(
-                self.gesture_to_idx[row["label"]], dtype=torch.long
-            )
+            "label": torch.tensor(self.gesture_to_idx[row["label"]], dtype=torch.long)
         }
 
         # Store metadata - ALWAYS include all keys with default values
@@ -261,7 +291,6 @@ def create_dataloaders(
     Returns:
         (train_loader, val_loader, val_metrics_loader, test_loader, dataset_info)
     """
-
     # Load parquet files
     train_df = pd.read_parquet(config["dataset"]["train_parquet"])
     val_df = pd.read_parquet(config["dataset"]["val_parquet"])
@@ -302,7 +331,8 @@ def create_dataloaders(
         f"After stratified subsampling: train={len(train_df)}, val={len(val_df)}, test={len(test_df)}"
     )
 
-    # Create datasets
+    # Create datasets with merge_thumb_index=True for training/validation
+    # but keep original labels for test set metadata (for paper-style evaluation)
     train_dataset = HandGestureDataset(
         metadata_df=train_df,
         data_root=config["dataset"]["data_root"],
@@ -310,6 +340,7 @@ def create_dataloaders(
         image_size=config["model"].get("image_size"),
         augmentation_cfg=config.get("augmentation", {}),
         device=device,
+        merge_thumb_index=True,  # Merge for training
     )
 
     val_dataset = HandGestureDataset(
@@ -319,6 +350,7 @@ def create_dataloaders(
         image_size=config["model"].get("image_size"),
         augmentation_cfg=None,  # No augmentation for validation
         device=device,
+        merge_thumb_index=True,  # Merge for validation
     )
 
     test_dataset = HandGestureDataset(
@@ -328,11 +360,11 @@ def create_dataloaders(
         image_size=config["model"].get("image_size"),
         augmentation_cfg=None,  # No augmentation for testing
         device=device,
+        merge_thumb_index=True,  # Merge for testing too
     )
 
     # Create smaller validation metrics subset with STRATIFIED sampling for fast metrics during training
     val_metrics_subset_size = config["evaluation"].get("val_metrics_subset_size", 0)
-
     if val_metrics_subset_size > 0 and val_metrics_subset_size < len(val_dataset):
         logger.info(
             f"Creating stratified validation metrics subset of size {val_metrics_subset_size} for periodic detailed metrics"
@@ -356,7 +388,6 @@ def create_dataloaders(
         subset_labels = [val_labels[i] for i in val_metrics_indices]
         original_dist = Counter(val_labels)
         subset_dist = Counter(subset_labels)
-
         logger.info("Validation metrics subset class distribution:")
         logger.info(
             f"  Full validation: {len(val_labels)} samples, {len(original_dist)} classes"
