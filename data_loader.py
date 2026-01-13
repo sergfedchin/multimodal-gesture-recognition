@@ -146,10 +146,15 @@ class HandGestureDataset(Dataset):
                         hue=self.augmentation_cfg.get("color_jitter_hue", 0.1),
                     )
                 )
-
-        augmentation.extend(
-            [transforms.Resize((self.image_size, self.image_size)), *base_transforms]
-        )
+        if self.image_size:
+            augmentation.extend(
+                [
+                    transforms.Resize((self.image_size, self.image_size)),
+                    *base_transforms,
+                ]
+            )
+        else:
+            augmentation.extend(base_transforms)
 
         if is_train and self.augmentation_cfg.get("random_erasing", False):
             augmentation.append(
@@ -165,6 +170,12 @@ class HandGestureDataset(Dataset):
         return transforms.Compose(
             [
                 transforms.Resize((self.image_size, self.image_size)),
+                transforms.ToTensor(),
+                # Normalize to [0, 1] for depth (will be further normalized in model if needed)
+                transforms.Normalize(mean=[0.5], std=[0.5]),
+            ]
+            if self.image_size
+            else [
                 transforms.ToTensor(),
                 # Normalize to [0, 1] for depth (will be further normalized in model if needed)
                 transforms.Normalize(mean=[0.5], std=[0.5]),
@@ -189,14 +200,14 @@ class HandGestureDataset(Dataset):
 
         output = {
             "label": torch.tensor(
-                self.gesture_to_idx[row["gesture_class"]], dtype=torch.long
+                self.gesture_to_idx[row["label"]], dtype=torch.long
             )
         }
 
         # Store metadata - ALWAYS include all keys with default values
         # This ensures all samples have the same metadata structure for batching
         output["metadata"] = {
-            "gesture_class": row["gesture_class"],
+            "gesture_class": row["label"],
             "original_id": str(row["original_id"]),
             "hand_index": int(row["hand_index"]),
             "user_id": str(row["user_id"]) if pd.notna(row["user_id"]) else "",
@@ -296,7 +307,7 @@ def create_dataloaders(
         metadata_df=train_df,
         data_root=config["dataset"]["data_root"],
         modality=config["model"]["modality"],
-        image_size=config["model"]["image_size"],
+        image_size=config["model"].get("image_size"),
         augmentation_cfg=config.get("augmentation", {}),
         device=device,
     )
@@ -305,7 +316,7 @@ def create_dataloaders(
         metadata_df=val_df,
         data_root=config["dataset"]["data_root"],
         modality=config["model"]["modality"],
-        image_size=config["model"]["image_size"],
+        image_size=config["model"].get("image_size"),
         augmentation_cfg=None,  # No augmentation for validation
         device=device,
     )
@@ -314,7 +325,7 @@ def create_dataloaders(
         metadata_df=test_df,
         data_root=config["dataset"]["data_root"],
         modality=config["model"]["modality"],
-        image_size=config["model"]["image_size"],
+        image_size=config["model"].get("image_size"),
         augmentation_cfg=None,  # No augmentation for testing
         device=device,
     )

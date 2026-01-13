@@ -13,16 +13,16 @@ test_parquet = "/home/serg_fedchn/Homework/thesis/data/processed_hands/parquet/t
 data_root = "/home/serg_fedchn/Homework/thesis/data/processed_hands/images"
 
 # Data sampling for faster experiments
-train_subsample = 0.25
+train_subsample = 1
 val_subsample = 1
 test_subsample = 1
 
 # Number of workers for data loading
-num_workers = 8
+num_workers = 16
 
 [logging]
 output_dir = "./outputs"
-experiment_name = "resnet18_cross_attention_mixup_25"
+experiment_name = "resnet18_weighted_sum_100_96x96"
 log_interval = 100
 save_interval = 1
 save_best = true
@@ -34,37 +34,36 @@ modality = "fusion"
 
 # Architecture: "vssd", "resnet18", "resnet50", "vit"
 architecture = "resnet18"
-freeze_backbone = true  # NEW - freeze early layers!
+freeze_backbone = true
 
 # VSSD variant: "micro", "tiny", "small", "base" (only used if architecture="vssd")
-vssd_variant = "base"
+vssd_variant = "tiny"
 
 # For fusion mode: how to combine RGB and depth features
 # Options: "concat", "addition", "weighted_sum", "gated_fusion", "adaptive_fusion", "cross_attention"
-fusion_method = "cross_attention"
+fusion_method = "weighted_sum"
 
 # Image dimensions
-image_size = 224
+image_size = 96
 
 # Number of gesture classes
 num_classes = 34
 
 # Whether to use pretrained ImageNet weights
 pretrained = true
+pretrained_ckpt = ""
 
 # Dropout rate for regularization
-dropout = 0.5
+dropout = 0.3
 
 # VSSD integration (only used if architecture="vssd")
-# vssd_repo_path = "/home/serg_fedchn/Homework/thesis/VSSD"
+vssd_repo_path = "/home/serg_fedchn/Homework/thesis/VSSD"
 # vssd_repo_path = "/home/daryumin/HandGestures_experiments/VSSD"
-
-pretrained_ckpt = ""
 
 [training]
 # Training hyperparameters
-batch_size = 256
-num_epochs = 50
+batch_size = 512
+num_epochs = 20
 learning_rate = 3e-5
 weight_decay = 5e-4
 
@@ -92,10 +91,10 @@ enabled = true
 patience = 5
 min_delta = 0.001
 mode = "max"
-monitor = "accuracy"
+monitor = "f1"
 
 [evaluation]
-val_metrics_subset_size = 0
+val_metrics_subset_size = 0  # 0 = use full validation set to calculate metrics
 metrics_compute_interval = 3
 metrics = ["accuracy", "f1"]
 f1_average = "weighted"
@@ -103,9 +102,9 @@ f1_average = "weighted"
 [augmentation]
 # Data augmentation settings
 enable_augmentation = true
-random_flip = true
-random_rotation = true
-rotation_degrees = 15           # Increased from 10
+random_flip = false
+random_rotation = false
+rotation_degrees = 0
 color_jitter = true
 color_jitter_brightness = 0.3   # Increased from 0.2
 color_jitter_contrast = 0.3     # Increased from 0.2
@@ -115,16 +114,13 @@ random_erasing = true           # ENABLED (was false)
 erasing_probability = 0.3       # Increased from 0.1
 
 # Mixup augmentation (applied in training loop)
-use_mixup = true                # NEW - enable Mixup
-mixup_alpha = 0.2               # NEW - Mixup interpolation strength
+use_mixup = true                # Enable Mixup
+mixup_alpha = 0.2               # Mixup interpolation strength
 
-# Label smoothing (reduces overconfidence)
-label_smoothing = 0.1           # NEW - prevents overconfident predictions
+label_smoothing = 0.1           # Prevents overconfident predictions
 
 [hardware]
 device = "cuda"
-num_gpus = 1
 use_amp = true
 pin_memory = false
-distributed = false
-backend = "nccl"
+
