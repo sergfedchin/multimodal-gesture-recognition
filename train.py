@@ -178,10 +178,10 @@ def main(
 
     # Print comparison
     logger.info("="*80)
-    logger.info("COMPARISON:")
+    logger.info("FINAL METRICS:")
     logger.info("="*80)
-    logger.info(f"Hand-level accuracy (33 classes - without thumb_index2 class):  {results['overall_accuracy']:.4f}")
-    logger.info(f"Image-level accuracy (33 classes - without no_gesture class): {paper_results['paper_style_accuracy']:.2f}%")
+    logger.info(f"Hand-level (33 classes - without thumb_index2 class):  F1 - {results['macro_f1']:.2f}%, Accuracy - {results['overall_accuracy'] * 100:.2f}%")
+    logger.info(f"Image-level (33 classes - without no_gesture class):  F1 - {results['paper_style_macro_f1']:.2f}, Accuracy - {paper_results['paper_style_accuracy']:.2f}%")
     logger.info(f"Number of test images: {paper_results['paper_style_num_images']}")
     logger.info("="*80)
 

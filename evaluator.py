@@ -393,6 +393,11 @@ class Evaluator:
             all_true_labels.append(true_label)
             all_pred_labels.append(final_prediction)
 
+        # Get unique labels (33 classes)
+        unique_labels = sorted(set(all_true_labels + all_pred_labels))
+        if "no_gesture" in unique_labels:
+            unique_labels.remove("no_gesture")
+
         # Calculate accuracy (33 classes)
         correct = sum(
             [1 for true, pred in zip(all_true_labels, all_pred_labels) if true == pred]
@@ -400,10 +405,9 @@ class Evaluator:
         total = len(all_true_labels)
         accuracy = 100 * correct / total
 
-        # Get unique labels (33 classes)
-        unique_labels = sorted(set(all_true_labels + all_pred_labels))
-        if "no_gesture" in unique_labels:
-            unique_labels.remove("no_gesture")
+        # Calculate F1 scores (33 classes)
+        macro_f1 = f1_score(all_true_labels, all_pred_labels, labels=unique_labels, average='macro', zero_division=0)
+        weighted_f1 = f1_score(all_true_labels, all_pred_labels, labels=unique_labels, average='weighted', zero_division=0)
 
         # Classification report
         report = classification_report(
@@ -411,7 +415,7 @@ class Evaluator:
             all_pred_labels,
             labels=unique_labels,
             target_names=unique_labels,
-            digits=3,
+            digits=4,
             zero_division=0,
         )
 
@@ -420,6 +424,8 @@ class Evaluator:
 
         results = {
             "paper_style_accuracy": accuracy,
+            "paper_style_macro_f1": macro_f1 * 100,  # В процентах для единообразия
+            "paper_style_weighted_f1": weighted_f1 * 100,
             "paper_style_num_images": total,
             "paper_style_confusion_matrix": cm,
             "paper_style_labels": unique_labels,
@@ -428,9 +434,12 @@ class Evaluator:
             "paper_style_all_pred": all_pred_labels,
         }
 
-        logger.info('=' * 80)
+        logger.info("=" * 80)
         logger.info(f"IMAGE-LEVEL ACCURACY (33 classes): {accuracy:.2f}%")
-        logger.info(f"{'=' * 80}")
+        logger.info(f"IMAGE-LEVEL MACRO F1 (33 classes): {macro_f1*100:.2f}%")
+        logger.info(f"IMAGE-LEVEL WEIGHTED F1 (33 classes): {weighted_f1*100:.2f}%")
+        logger.info(f"Number of test images: {total}")
+        logger.info("=" * 80)
         logger.info("Classification Report (Image-Level):")
         logger.info(report)
 
@@ -682,6 +691,8 @@ class Evaluator:
         # Add paper-style results if available
         if "paper_style_accuracy" in results:
             save_data["paper_style_accuracy"] = float(results["paper_style_accuracy"])
+            save_data["paper_style_macro_f1"] = float(results.get("paper_style_macro_f1", 0))
+            save_data["paper_style_weighted_f1"] = float(results.get("paper_style_weighted_f1", 0))
             save_data["paper_style_num_images"] = int(results["paper_style_num_images"])
 
         with open(save_path, "w") as f:
