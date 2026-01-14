@@ -13,7 +13,7 @@ test_parquet = "/home/serg_fedchn/Homework/thesis/data/processed_hands/parquet/t
 data_root = "/home/serg_fedchn/Homework/thesis/data/processed_hands/images"
 
 # Data sampling for faster experiments
-train_subsample = 1
+train_subsample = 0.1
 val_subsample = 1
 test_subsample = 1
 
@@ -22,7 +22,7 @@ num_workers = 16
 
 [logging]
 output_dir = "./outputs"
-experiment_name = "resnet18_probability_fusion_33classes"
+experiment_name = "resnet18_rgb_33classes"
 log_interval = 100
 save_interval = 1
 save_best = true
@@ -30,14 +30,14 @@ checkpoints_keep = 3
 
 [model]
 # Input modality: "rgb", "depth", or "fusion"
-modality = "fusion"
+modality = "rgb"
 
 # Architecture: "vssd", "resnet18", "resnet50", "vit"
 architecture = "resnet18"
 freeze_backbone = false
 
 # VSSD variant: "micro", "tiny", "small", "base" (only used if architecture="vssd")
-vssd_variant = "tiny"
+vssd_variant = "micro"
 
 # For fusion mode: how to combine RGB and depth features
 # Options: 
@@ -71,7 +71,7 @@ vssd_repo_path = "/home/serg_fedchn/Homework/thesis/VSSD"
 [training]
 # Training hyperparameters
 batch_size = 256
-num_epochs = 20
+num_epochs = 1
 learning_rate = 3e-5
 weight_decay = 5e-4
 
