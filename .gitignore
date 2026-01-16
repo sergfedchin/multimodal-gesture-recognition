@@ -5,3 +5,5 @@ __*__
 outputs
 config*
 !config.toml
+digest.txt
+.gitingestignore
