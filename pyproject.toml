@@ -9,6 +9,7 @@ dependencies = [
     "einops>=0.8.1",
     "fvcore>=0.1.5.post20221221",
     "gpustat>=1.1.1",
+    "grad-cam>=1.5.5",
     "ipykernel>=7.1.0",
     "ipywidgets>=8.1.8",
     "jupyter>=1.1.1",
