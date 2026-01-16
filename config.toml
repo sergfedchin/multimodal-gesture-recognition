@@ -13,7 +13,7 @@ test_parquet = "/home/serg_fedchn/Homework/thesis/data/processed_hands/parquet/t
 data_root = "/home/serg_fedchn/Homework/thesis/data/processed_hands/images"
 
 # Data sampling for faster experiments
-train_subsample = 0.1
+train_subsample = 1
 val_subsample = 1
 test_subsample = 1
 
@@ -22,7 +22,7 @@ num_workers = 16
 
 [logging]
 output_dir = "./outputs"
-experiment_name = "resnet18_rgb_33classes"
+experiment_name = "vssd_base_cross_attention_fusion"
 log_interval = 100
 save_interval = 1
 save_best = true
@@ -30,20 +30,44 @@ checkpoints_keep = 3
 
 [model]
 # Input modality: "rgb", "depth", or "fusion"
-modality = "rgb"
+modality = "fusion"
 
-# Architecture: "vssd", "resnet18", "resnet50", "vit"
-architecture = "resnet18"
+# ============================================================================
+# FUSION MODE: РАЗНЫЕ АРХИТЕКТУРЫ ДЛЯ RGB И DEPTH
+# ============================================================================
+# Теперь поддерживаются ЛЮБЫЕ комбинации архитектур!
+# Projection layers автоматически выравнивают размерности признаков.
+
+# Для RGB ветки
+# rgb_architecture = "vssd"        # "vssd", "resnet18/34/50", "vit"
+# rgb_vssd_variant = "base"       # "micro", "tiny", "small", "base" (если rgb_architecture="vssd")
+# rgb_pretrained = true
+# rgb_freeze_backbone = false
+
+# Для Depth ветки
+# depth_architecture = "vssd"      # "vssd", "resnet18/34/50", "vit"
+# depth_vssd_variant = "small"      # "micro", "tiny", "small", "base" (если depth_architecture="vssd")
+# depth_pretrained = true
+# depth_freeze_backbone = false
+
+# Unified dimension для fusion (опционально)
+# Если не указано, используется max(rgb_feat_dim, depth_feat_dim)
+# unified_feature_dim = 1024
+# ============================================================================
+
+# Для обратной совместимости: используются если rgb_/depth_ параметры НЕ указаны
+# ИЛИ для single-modality режимов (modality="rgb" или modality="depth")
+architecture = "vssd"  # "vssd", "resnet18/34/50", "vit"
+vssd_variant = "base"
+pretrained = true
 freeze_backbone = false
 
-# VSSD variant: "micro", "tiny", "small", "base" (only used if architecture="vssd")
-vssd_variant = "micro"
-
 # For fusion mode: how to combine RGB and depth features
+# ВСЕ методы теперь поддерживают разные размерности признаков!
 # Options: 
 #   Feature-level fusion: "concat", "addition", "weighted_sum", "gated_fusion", "adaptive_fusion", "cross_attention"
 #   Probability-level fusion: "probability_fusion"
-fusion_method = "probability_fusion"
+fusion_method = "cross_attention"
 
 # Number of attention heads for probability_fusion (only used if fusion_method="probability_fusion")
 # Default: 1 (single-head, simplest and often most effective)
@@ -57,21 +81,18 @@ image_size = 128
 # NOTE: Use 33 for training (thumb_index2 merged into thumb_index)
 num_classes = 33
 
-# Whether to use pretrained ImageNet weights
-pretrained = true
-pretrained_ckpt = ""
-
 # Dropout rate for regularization
 dropout = 0.3
 
 # VSSD integration (only used if architecture="vssd")
 vssd_repo_path = "/home/serg_fedchn/Homework/thesis/VSSD"
 # vssd_repo_path = "/home/daryumin/HandGestures_experiments/VSSD"
+pretrained_ckpt = ""
 
 [training]
 # Training hyperparameters
 batch_size = 256
-num_epochs = 1
+num_epochs = 20
 learning_rate = 3e-5
 weight_decay = 5e-4
 
@@ -114,18 +135,18 @@ random_flip = false
 random_rotation = false
 rotation_degrees = 0
 color_jitter = true
-color_jitter_brightness = 0.3   # Increased from 0.2
-color_jitter_contrast = 0.3     # Increased from 0.2
-color_jitter_saturation = 0.3   # Increased from 0.2
-color_jitter_hue = 0.15         # Increased from 0.1
-random_erasing = true           # ENABLED (was false)
-erasing_probability = 0.3       # Increased from 0.1
+color_jitter_brightness = 0.3
+color_jitter_contrast = 0.3
+color_jitter_saturation = 0.3
+color_jitter_hue = 0.15
+random_erasing = true
+erasing_probability = 0.3
 
 # Mixup augmentation (applied in training loop)
-use_mixup = true                # Enable Mixup
-mixup_alpha = 0.2               # Mixup interpolation strength
+use_mixup = true
+mixup_alpha = 0.2
 
-label_smoothing = 0.1           # Prevents overconfident predictions
+label_smoothing = 0.1
 
 [hardware]
 device = "cuda"
