@@ -76,11 +76,11 @@ GESTURE_CLASSES = [
     "three3",
     "three_gun",
     "thumb_index",
-    "thumb_index2",
     "timeout",
     "two_up",
     "two_up_inverted",
     "xsign",
+    "thumb_index2",
 ]
 
 # ============================================================================
@@ -424,10 +424,10 @@ def classify_hand(hand_rgb: np.ndarray, hand_depth: Optional[np.ndarray] = None)
     device = torch.device(manager.classification_config["hardware"]["device"])
     rgb_tensor = rgb_tensor.to(device)
     if depth_tensor is not None:
-        print("Depth has been extracted!")
+        # print("Depth has been extracted!")
         depth_tensor = depth_tensor.to(device)    # Inference
     with torch.no_grad():
-        print(f"Modality: {manager.classification_config['model']['modality']}")
+        # print(f"Modality: {manager.classification_config['model']['modality']}")
         if manager.classification_config["model"]["modality"] == "rgb":
             logits = manager.classification_model(rgb_tensor)
         elif (
@@ -661,7 +661,7 @@ def create_visualization(results: Dict) -> Tuple:
     # Depth map (if available)
     depth_img = results.get("depth_map")
     if depth_img is not None:
-        depth_display = cv2.applyColorMap(depth_img, cv2.COLORMAP_VIRIDIS)
+        depth_display = cv2.applyColorMap(depth_img, cv2.COLORMAP_JET)
     else:
         depth_display = np.zeros((256, 256, 3), dtype=np.uint8)
 
@@ -685,7 +685,8 @@ def create_visualization(results: Dict) -> Tuple:
                     depth_img, (rgb_img.shape[1], rgb_img.shape[0])
                 )
                 if len(depth_resized.shape) == 2:
-                    depth_resized = cv2.cvtColor(depth_resized, cv2.COLOR_GRAY2RGB)
+                    depth_resized = cv2.applyColorMap(depth_resized, cv2.COLORMAP_JET)
+                    # depth_resized = cv2.cvtColor(depth_resized, cv2.COLOR_GRAY2RGB)
 
                 # Stack horizontally
                 composite = np.hstack([rgb_img, depth_resized])
