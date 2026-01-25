@@ -9,14 +9,14 @@ Key features:
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
 
-from vssd_integration import build_vssd_backbone
+from multimodal_gesture_recognition.vssd_integration import build_vssd_backbone
 
 logger = logging.getLogger(__name__)
 
@@ -692,7 +692,7 @@ class DualBranchFusionClassifier(nn.Module):
                 config["model"]["dropout"],
             )
 
-        logger.info(f"✓ Built dual-branch fusion classifier")
+        logger.info("✓ Built dual-branch fusion classifier")
         logger.info(f"  RGB: {rgb_architecture.upper()} (dim={self.rgb_feat_dim})")
         logger.info(f"  Depth: {depth_architecture.upper()} (dim={self.depth_feat_dim})")
         logger.info(f"  Fusion: {self.fusion_method} (unified_dim={self.unified_dim})")

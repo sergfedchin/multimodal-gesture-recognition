@@ -1,9 +1,6 @@
 __*__
 !__init__.py
+__pycache__
 .*venv*
-.env
-outputs
-config*
-!config.toml
-digest.txt
-.gitingestignore
+checkpoints/
+multimodal_gesture_recognition/outputs/
