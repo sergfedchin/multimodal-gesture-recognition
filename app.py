@@ -42,7 +42,7 @@ CONFIG = {
     "depth_anything_checkpoint": "checkpoints/depth_anything_v2_vitl.pth",
     "ppd_inference_size": (1024, 768),
     # Classification model
-    "model_config": "multimodal_gesture_recognition/outputs/vssd_micro_small_cross_attention_fusion/config_vssd_micro_small_cross_attention_fusion.toml",
+    "model_config": "config.toml",
     "model_checkpoint": "checkpoints/best_model.pt",
     # Processing parameters
     "min_hand_confidence": 0.3,
@@ -893,23 +893,24 @@ def create_visualization(results: Dict) -> Tuple:
             hand_composites.append(np.zeros((128, 256, 3), dtype=np.uint8))
 
     # Stack hand composites vertically
-    if hand_composites:
-        # To make it square, we want height to be roughly equal to width after stacking
-        # If 2 hands: stack v, if 1 hand: keep as is.
-        hand_display_raw = (
-            np.vstack(hand_composites)
-            if len(hand_composites) > 1
-            else hand_composites[0]
-        )
-        # Scale the hand composite to fill its designated Gradio panel (height=600, width=600 to be square)
-        hand_target_size = CONFIG["hand_collage_size"]
-        hand_display = cv2.resize(
-            hand_display_raw, hand_target_size, interpolation=cv2.INTER_CUBIC
-        )  # Upscale to fill panel
-    else:
-        hand_display = np.zeros(
-            CONFIG["hand_collage_size"], dtype=np.uint8
-        )  # Default size matching expected panel
+    # if hand_composites:
+    #     # To make it square, we want height to be roughly equal to width after stacking
+    #     # If 2 hands: stack v, if 1 hand: keep as is.
+    #     hand_display_raw = (
+    #         np.vstack(hand_composites)
+    #         if len(hand_composites) > 1
+    #         else hand_composites[0]
+    #     )
+    #     # Scale the hand composite to fill its designated Gradio panel (height=600, width=600 to be square)
+    #     hand_target_size = CONFIG["hand_collage_size"]
+    #     hand_display = cv2.resize(
+    #         hand_display_raw, hand_target_size, interpolation=cv2.INTER_CUBIC
+    #     )  # Upscale to fill panel
+    # else:
+
+    #     # hand_display = np.zeros(
+    #     #     CONFIG["hand_collage_size"], dtype=np.uint8
+    #     # )  # Default size matching expected panel
 
     # Generate probability chart(s) for each hand
     probability_charts = create_probability_chart_for_hands(hand_predictions_data)

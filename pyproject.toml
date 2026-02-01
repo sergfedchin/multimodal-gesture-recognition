@@ -8,7 +8,6 @@ dependencies = [
     "chardet>=5.2.0",
     "einops>=0.8.1",
     "flash-attention>=1.0.0",
-    "flash-attn>=2.8.3",
     "fvcore>=0.1.5.post20221221",
     "gpustat>=1.1.1",
     "grad-cam>=1.5.5",
