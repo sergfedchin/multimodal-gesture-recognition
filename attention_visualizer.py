@@ -1,7 +1,6 @@
 import io
 import warnings
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, Tuple
+from typing import List, Optional, Tuple
 
 import cv2
 import matplotlib.pyplot as plt
@@ -9,9 +8,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from tqdm.auto import tqdm
-from torchvision import transforms
 from PIL import Image
+from torchvision import transforms
 
 
 class LRPLinear(nn.Module):
@@ -600,19 +598,38 @@ class AttentionVisualizer:
 
         # Side-by-side comparison
         fig = plt.figure(figsize=(16, 4.3))
-        gs = fig.add_gridspec(2, 5, hspace=0.05, wspace=0.15,
-                            width_ratios=[0.5, 1, 2, 2, 2])  # First col for labels
+        gs = fig.add_gridspec(
+            2, 5, hspace=0.05, wspace=0.15, width_ratios=[0.5, 1, 2, 2, 2]
+        )  # First col for labels
 
         # Empty first column for labels
         ax_label1 = fig.add_subplot(gs[0, 0])
         ax_label1.axis("off")
-        ax_label1.text(0.5, 0.5, "RGB\nизображение", fontsize=14, fontweight="bold",
-                    rotation=90, va='center', ha='center', transform=ax_label1.transAxes)
+        ax_label1.text(
+            0.5,
+            0.5,
+            "RGB\nизображение",
+            fontsize=14,
+            fontweight="bold",
+            rotation=90,
+            va="center",
+            ha="center",
+            transform=ax_label1.transAxes,
+        )
 
         ax_label2 = fig.add_subplot(gs[1, 0])
         ax_label2.axis("off")
-        ax_label2.text(0.5, 0.5, "Карта\nглубины", fontsize=14, fontweight="bold",
-                    rotation=90, va='center', ha='center', transform=ax_label2.transAxes)
+        ax_label2.text(
+            0.5,
+            0.5,
+            "Карта\nглубины",
+            fontsize=14,
+            fontweight="bold",
+            rotation=90,
+            va="center",
+            ha="center",
+            transform=ax_label2.transAxes,
+        )
 
         # Now your images start from column 1 instead of 0
         ax1 = fig.add_subplot(gs[0, 1])  # Changed from [0, 0] to [0, 1]

@@ -4,5 +4,6 @@ __pycache__
 .vscode
 .*venv*
 .gradio
-checkpoints/
+checkpoints/*
+!checkpoints/.gitkeep
 multimodal_gesture_recognition/outputs/
