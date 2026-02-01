@@ -2,7 +2,7 @@
 
 ## Для запуска:
 
-1. Скачать все веса моделей в папку `checkpoints/`
+1. Скачать все [веса моделей](https://disk.360.yandex.ru/d/KzECxezVSg0gZw) в папку `checkpoints/`
 2. Установить зависимости
   ```shell
   git clone git@github.com:iMoonLab/yolov13.git preprocess/yolov13
