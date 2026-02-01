@@ -1,6 +1,8 @@
 __*__
 !__init__.py
 __pycache__
+.vscode
 .*venv*
+.gradio
 checkpoints/
 multimodal_gesture_recognition/outputs/
