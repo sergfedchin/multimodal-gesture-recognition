@@ -3,10 +3,10 @@ Gesture Recognition Demo App
 Combines preprocessing (YOLOv13, PPD depth estimation) with VSSD-based classification
 """
 
-from pathlib import Path
 import sys
 import time
 import warnings
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import cv2
@@ -15,6 +15,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+from PIL import Image
+from torchvision import transforms
+
+from attention_visualizer import AttentionVisualizer
 
 warnings.filterwarnings("ignore")
 
@@ -60,7 +64,7 @@ EXAMPLE_IMAGES_LIST = []  # Глобальный список для хране�
 example_paths = []
 
 # Собираем все подходящие файлы
-for ext in ['*.jpg', '*.jpeg', '*.png', '*.JPG', '*.JPEG', '*.PNG', '*.bmp', '*.BMP']:
+for ext in ["*.jpg", "*.jpeg", "*.png", "*.JPG", "*.JPEG", "*.PNG", "*.bmp", "*.BMP"]:
     example_paths.extend(EXAMPLES_PATH.glob(ext))
 
 example_paths = sorted(set(example_paths), key=lambda p: p.name)
@@ -121,6 +125,7 @@ GESTURE_CLASSES = [
     "thumb_index2",
 ]
 
+
 # =============================================================================
 # MODEL LOADING FUNCTIONS
 # =============================================================================
@@ -163,6 +168,10 @@ class ModelManager:
         print("  Loading gesture classification model...")
         self.classification_model, self.classification_config = (
             self._load_classification_model()
+        )
+        # Визуализатор внимания
+        self.visualizer = AttentionVisualizer(
+            self.classification_model, GESTURE_CLASSES, image_size=128
         )
 
         self.models_loaded = True
@@ -421,8 +430,6 @@ def classify_hand(hand_rgb: np.ndarray, hand_depth: Optional[np.ndarray] = None)
         pred_idx = np.argmax(probs)
         return GESTURE_CLASSES[pred_idx], float(probs[pred_idx]), probs.tolist()
     # Preprocess image
-    from PIL import Image
-    from torchvision import transforms
 
     # RGB preprocessing
     rgb_transform = transforms.Compose(
@@ -432,7 +439,7 @@ def classify_hand(hand_rgb: np.ndarray, hand_depth: Optional[np.ndarray] = None)
         ]
     )
 
-    rgb_tensor = rgb_transform(Image.fromarray(hand_rgb)).unsqueeze(0)
+    rgb_tensor: torch.Tensor = rgb_transform(Image.fromarray(hand_rgb)).unsqueeze(0)
 
     # Depth preprocessing (if available)
     if hand_depth is not None and manager.classification_config["model"][
@@ -450,13 +457,12 @@ def classify_hand(hand_rgb: np.ndarray, hand_depth: Optional[np.ndarray] = None)
 
     # Move to device
     device = torch.device(manager.classification_config["hardware"]["device"])
-    rgb_tensor = rgb_tensor.to(device)
+    rgb_tensor: torch.Tensor = rgb_tensor.to(device)
     if depth_tensor is not None:
         # print("Depth has been extracted!")
-        depth_tensor = depth_tensor.to(device)
+        depth_tensor: torch.Tensor = depth_tensor.to(device)
     # Inference
     with torch.no_grad():
-        # print(f"Modality: {manager.classification_config['model']['modality']}")
         if manager.classification_config["model"]["modality"] == "rgb":
             logits = manager.classification_model(rgb_tensor)
         elif (
@@ -555,9 +561,9 @@ def draw_detections(
     thickness = max(int(CONFIG["detection_line_thickness"] * scale_factor), 1)
     line_type = cv2.LINE_AA
 
-    # Calculate dimensions of the scaled canvas portion where the actual image resides
-    h_actual = img_scaled.shape[0]
-    w_actual = img_scaled.shape[1]
+    # # Calculate dimensions of the scaled canvas portion where the actual image resides
+    # h_actual = img_scaled.shape[0]
+    # w_actual = img_scaled.shape[1]
 
     if person_bbox:
         x1, y1, x2, y2, conf = person_bbox
@@ -714,6 +720,7 @@ def process_image(input_image: np.ndarray, progress=gr.Progress()) -> Dict:
         "hand_images": [],
         "hand_depth_maps": [],
         "hand_predictions": [],  # Store detailed hand data including probabilities
+        "attention_visualizations": [],
         "final_prediction": " ",
         "processing_time": 0,
     }
@@ -733,7 +740,7 @@ def process_image(input_image: np.ndarray, progress=gr.Progress()) -> Dict:
         return results
 
     # Stage 2: Expand person bbox and crop
-    progress(0.3, desc="Обрезка области человека...")
+    progress(0.2, desc="Обрезка области человека...")
     expanded_bbox = expand_person_bbox(
         person_bbox,  # Now includes confidence [x1, y1, x2, y2, conf]
         hand_bboxes,
@@ -755,13 +762,13 @@ def process_image(input_image: np.ndarray, progress=gr.Progress()) -> Dict:
         return results
 
     # Stage 3: Depth estimation
-    progress(0.5, desc="Оценка глубины...")
+    progress(0.25, desc="Оценка глубины...")
     depth_map = estimate_depth(person_crop)
     if depth_map is not None:
         results["depth_map"] = depth_map
 
     # Stage 4: Crop and process hands
-    progress(0.7, desc="Обработка обрезанных рук...")
+    progress(0.35, desc="Обработка обрезанных рук...")
     hand_predictions = []
 
     for i, hand_bbox in enumerate(hand_bboxes[:2]):  # Max 2 hands
@@ -794,10 +801,22 @@ def process_image(input_image: np.ndarray, progress=gr.Progress()) -> Dict:
             results["hand_depth_maps"].append(None)
 
         # Classify hand
-        progress(0.7 + 0.1 * (i + 1), desc=f"Классификация руки {i + 1}...")
+        progress(0.4 + 0.2 * i, desc=f"Классификация руки {i + 1}...")
         pred_class, confidence, all_probs = classify_hand(
             hand_rgb, results["hand_depth_maps"][-1] if depth_map is not None else None
         )
+
+        progress(
+            0.4 + 0.2 * i + 0.1,
+            desc=f"Создание визуализаций внимания для руки {i + 1}...",
+        )
+        attention_visualization = manager.visualizer.generate_all_visualizations(
+            hand_rgb, results["hand_depth_maps"][-1], i + 1
+        )
+        results["attention_visualizations"].append(attention_visualization)
+
+        # with open("visualization.png", "wb") as f:
+        #     Image.fromarray(attention_visualization).save(f)
 
         hand_predictions.append((pred_class, confidence))
         # Store detailed data for this hand, including probabilities
@@ -906,6 +925,13 @@ def create_visualization(results: Dict) -> Tuple:
     else:
         probability_chart_display = probability_charts[0]
 
+    attention_visualizations = results["attention_visualizations"]
+    if len(attention_visualizations) > 1:
+        attention_visualization = np.vstack(attention_visualizations)
+    else:
+        attention_visualization = attention_visualizations[0]
+
+
     # Prediction text (now only summary info, details in chart)
     prediction_text = (
         f"Итоговое предсказание: {results.get('final_prediction', 'неизвестен')}\n"
@@ -922,7 +948,8 @@ def create_visualization(results: Dict) -> Tuple:
     return (
         detection_img,
         depth_display,
-        hand_display,
+        # hand_display,
+        attention_visualization,
         probability_chart_display,
         prediction_text,
     )
@@ -959,14 +986,22 @@ with gr.Blocks(
             detection_output = gr.Image(
                 label="Детекции (зеленым: человек, красным: руки)", height=600
             )
-
-    with gr.Row():
         with gr.Column():
             depth_output = gr.Image(label="Карта глубины", height=600)
 
+    # with gr.Row():
+        
+
+        # with gr.Column():
+        #     hands_output = gr.Image(
+        #         label="Вырезанные руки (слева: RGB, справа: карта глубины)", height=600
+        #     )
+
+    with gr.Row():
         with gr.Column():
-            hands_output = gr.Image(
-                label="Вырезанные руки (слева: RGB, справа: карта глубины)", height=600
+            attention_output = gr.Image(
+                label="Визуализация внимания модели", 
+                height=800  # или 900 для большего размера
             )
 
     with gr.Row():
@@ -981,8 +1016,9 @@ with gr.Blocks(
     # Processing pipeline
     def process_and_display(image):
         if image is None:
-            return None, None, None, None, "Пожалуйста, сначала загрузите изображение"
-
+            # 6 значений: 5 None для изображений + сообщение об ошибке
+            return None, None, None, None, None, "Пожалуйста, сначала загрузите изображение"
+        
         results = process_image(image)
         return create_visualization(results)
 
@@ -992,63 +1028,60 @@ with gr.Blocks(
         outputs=[
             detection_output,
             depth_output,
-            hands_output,
-            probability_chart_output,
-            prediction_output,
+            # hands_output,
+            attention_output,  # 4-е место
+            probability_chart_output,  # 5-е место
+            prediction_output,  # 6-е место
         ],
     )
 
     # Clear function
     def clear_all():
-        # Return None for Images and "" for Textbox to clear them properly
-        return None, None, None, None, ""
+        # 7 значений: 6 None для изображений + пустая строка
+        return None, None, None, None, None, ""
 
     clear_btn.click(
         fn=clear_all,
         inputs=[],
         outputs=[
-            input_image,
-            detection_output,
-            depth_output,
-            hands_output,
-            probability_chart_output,
-            prediction_output,
+            input_image,  # 1
+            detection_output,  # 2
+            depth_output,  # 3
+            # hands_output,  # 4
+            attention_output,  # 5
+            probability_chart_output,  # 6
+            prediction_output,  # 7
         ],
     )
 
     # Examples
     # Галерея примеров (после объявления всех основных компонентов)
-    if EXAMPLE_IMAGES_LIST:
-        gallery = gr.Gallery(
-            value=EXAMPLE_IMAGES_LIST,  # Список кортежей (изображение, метка)
-            label="Примеры для анализа",
-            columns=6,
-            # rows=2,
-            height=600,
-            preview=False,
-            allow_preview=False,
-            show_label=True,
-        )
+    gallery = gr.Gallery(
+        value=EXAMPLE_IMAGES_LIST,  # Список кортежей (изображение, метка)
+        label="Примеры для анализа",
+        columns=6,
+        # rows=2,
+        height=600,
+        preview=False,
+        allow_preview=False,
+        show_label=True,
+    )
 
-        # Обработчик клика по галерее
-        def load_from_gallery(evt: gr.SelectData):
-            """Загружает выбранное изображение из предзагруженного списка"""
-            index = evt.index  # Получаем индекс выбранного элемента
-            if 0 <= index < len(EXAMPLE_IMAGES_LIST):
-                img_array, _ = EXAMPLE_IMAGES_LIST[index]
-                return img_array
-            return None
+    # Обработчик клика по галерее
+    def load_from_gallery(evt: gr.SelectData):
+        """Загружает выбранное изображение из предзагруженного списка"""
+        index = evt.index  # Получаем индекс выбранного элемента
+        if 0 <= index < len(EXAMPLE_IMAGES_LIST):
+            img_array, _ = EXAMPLE_IMAGES_LIST[index]
+            return img_array
+        return None
 
-        gallery.select(
-            fn=load_from_gallery,
-            inputs=None,
-            outputs=[input_image],
-        )
-    else:
-        gr.Markdown(
-            "> ⚠️ Папка `example_images` пуста или не содержит поддерживаемых изображений (.jpg, .jpeg, .png, .bmp)"
-        )
-    
+    gallery.select(
+        fn=load_from_gallery,
+        inputs=None,
+        outputs=[input_image],
+    )
+
     gr.Markdown(
         """
 ---
