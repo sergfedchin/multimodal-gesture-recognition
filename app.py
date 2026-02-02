@@ -14,6 +14,7 @@ import gradio as gr
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from matplotlib import rcParams
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from PIL import Image
 from torchvision import transforms
@@ -640,7 +641,7 @@ def draw_detections(
 def create_probability_chart_for_hands(
     hand_predictions_data: List[Dict],
 ) -> List[np.ndarray]:
-    """Create a horizontal bar chart for gesture probabilities for each hand."""
+    """Create a vertical bar chart for gesture probabilities for each hand."""
     charts = []
     for hand_data in hand_predictions_data:
         all_probs = hand_data.get("all_probabilities", [])
@@ -649,56 +650,92 @@ def create_probability_chart_for_hands(
             charts.append(np.zeros((400, 600, 3), dtype=np.uint8))
             continue
 
-        classes, probs = zip(*all_probs)
-        # Sort by probability DESCENDING (as requested)
-        sorted_indices = np.argsort(probs)
+        # Separate classes and probabilities
+        classes = [item[0] for item in all_probs]
+        probs = [item[1] for item in all_probs]
+
+        # Sort by probability descending
+        sorted_indices = np.argsort(probs)[::-1]  # DESCENDING order
         sorted_classes = [classes[i] for i in sorted_indices]
         sorted_probs = [probs[i] for i in sorted_indices]
 
-        # Create matplotlib figure
-        fig, ax = plt.subplots(figsize=(10, 12))  # Larger figure for more classes
-        y_pos = np.arange(len(sorted_classes))
+        # Take top 10 predictions for better visualization
+        top_n = 10
+        top_classes = sorted_classes[:top_n]
+        top_probs = sorted_probs[:top_n]
 
-        bars = ax.barh(y_pos, sorted_probs, align="center")
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(sorted_classes, fontsize=10)  # Adjusted font size
-        ax.set_xlabel("Вероятность")
-        ax.set_title(
-            f"Распределение вероятностей классов для руки #{hand_data['hand']}"
+        # Set modern matplotlib style
+        plt.style.use("dark_background")
+        rcParams.update(
+            {
+                "axes.facecolor": "#111111",
+                "figure.facecolor": "#0a0a0a",
+                "axes.edgecolor": "#333333",
+                "axes.labelcolor": "white",
+                "text.color": "white",
+                "xtick.color": "white",
+                "ytick.color": "white",
+            }
         )
-        ax.set_xlim(0, 1)  # Probabilities are between 0 and 1
 
-        # Add value labels on bars
-        for bar, prob in zip(bars, sorted_probs):
-            width = bar.get_width()
+        fig, ax = plt.subplots(figsize=(20, 9.13))
+
+        # Create gradient colors
+        colors = plt.cm.viridis(np.linspace(0.8, 0.2, top_n))
+
+        bars = ax.bar(
+            top_classes, top_probs, color=colors, edgecolor=None, linewidth=0
+        )
+
+        ax.grid(False)
+        ax.set_xlabel("Классы жестов", fontsize=22, labelpad=10)
+        ax.set_ylabel("Вероятность", fontsize=22, labelpad=10)
+        ax.set_title(
+            f"Распределение вероятностей топ-{top_n} классов руки #{hand_data['hand']}",
+            fontsize=26,
+            pad=35,
+            fontweight="bold",
+        )
+        ax.set_ylim(0, 1.1)
+
+        # Add value labels on top of bars
+        for bar, prob in zip(bars, top_probs):
+            height = bar.get_height()
             ax.text(
-                width + 0.01,
-                bar.get_y() + bar.get_height() / 2.0,
+                bar.get_x() + bar.get_width() / 2.0,
+                height + 0.02,
                 f"{prob:.3f}",
-                ha="left",
-                va="center",
-                fontsize=8,
+                ha="center",
+                va="bottom",
+                fontsize=15,
             )
 
-        # Tight layout to prevent clipping
+        # Rotate x labels for better readability
+        plt.xticks(rotation=45, ha="right", fontsize=15)
+
         plt.tight_layout()
 
-        # Render to numpy array
+        # Convert to numpy array
         canvas = FigureCanvasAgg(fig)
         canvas.draw()
         buf = canvas.buffer_rgba()
-        ncols, nrows = canvas.get_width_height()
-        chart_img = np.frombuffer(buf, dtype=np.uint8).reshape(nrows, ncols, 4)
-        # Convert RGBA to RGB
+        chart_img = np.frombuffer(buf, dtype=np.uint8).reshape(
+            int(canvas.get_renderer().height), int(canvas.get_renderer().width), 4
+        )
         chart_img = cv2.cvtColor(chart_img, cv2.COLOR_RGBA2RGB)
 
-        plt.close(fig)  # Important to free memory
+        plt.close(fig)
+
         charts.append(chart_img)
 
     return charts
 
 
-def process_image(input_image: np.ndarray, progress=gr.Progress()) -> Dict:
+def process_image(
+    input_image: np.ndarray,
+    visualize_attention: bool = True,  # Новая опция
+    progress=gr.Progress(),
+) -> Dict:
     """
     Main processing pipeline for a single image.
     Returns dictionary with all outputs for Gradio.
@@ -723,6 +760,8 @@ def process_image(input_image: np.ndarray, progress=gr.Progress()) -> Dict:
         "attention_visualizations": [],
         "final_prediction": " ",
         "processing_time": 0,
+        "no_hands_found": False,  # Флаг, что руки не найдены
+        "visualize_attention": visualize_attention,  # Сохраняем настройку визуализации
     }
 
     start_time = time.time()
@@ -731,11 +770,28 @@ def process_image(input_image: np.ndarray, progress=gr.Progress()) -> Dict:
     progress(0.1, desc="Обнаружение человека и рук...")
     person_bbox, hand_bboxes = detect_person_and_hands(input_image)
 
+    # Проверка: если руки не найдены, устанавливаем флаг и завершаем обработку
+    if not hand_bboxes:
+        results["no_hands_found"] = True
+        results["final_prediction"] = (
+            "Руки не обнаружены. Загрузите изображение с видимыми руками."
+        )
+
+        # Рисуем только детекцию человека (если есть)
+        results["detections_image"] = draw_detections(input_image, person_bbox, [])
+
+        # Создаем пустые визуализации
+        results["attention_visualizations"] = [np.zeros((400, 600, 3), dtype=np.uint8)]
+
+        results["processing_time"] = time.time() - start_time
+        return results
+
+    # Если руки найдены, продолжаем обычную обработку
     # Draw detections on scaled image
     results["detections_image"] = draw_detections(input_image, person_bbox, hand_bboxes)
 
-    if not person_bbox or not hand_bboxes:
-        results["final_prediction"] = "no_gesture (человек/руки не обнаружены)"
+    if not person_bbox:
+        results["final_prediction"] = "no_gesture (человек не обнаружен)"
         results["processing_time"] = time.time() - start_time
         return results
 
@@ -806,17 +862,29 @@ def process_image(input_image: np.ndarray, progress=gr.Progress()) -> Dict:
             hand_rgb, results["hand_depth_maps"][-1] if depth_map is not None else None
         )
 
-        progress(
-            0.4 + 0.2 * i + 0.1,
-            desc=f"Создание визуализаций внимания для руки {i + 1}...",
-        )
-        attention_visualization = manager.visualizer.generate_all_visualizations(
-            hand_rgb, results["hand_depth_maps"][-1], i + 1
-        )
-        results["attention_visualizations"].append(attention_visualization)
-
-        # with open("visualization.png", "wb") as f:
-        #     Image.fromarray(attention_visualization).save(f)
+        # Визуализация внимания только если включена опция
+        if visualize_attention:
+            progress(
+                0.4 + 0.2 * i + 0.1,
+                desc=f"Создание визуализаций внимания для руки {i + 1}...",
+            )
+            attention_visualization = manager.visualizer.generate_all_visualizations(
+                hand_rgb, results["hand_depth_maps"][-1], i + 1
+            )
+            results["attention_visualizations"].append(attention_visualization)
+        else:
+            # Если визуализация отключена, добавляем заглушку
+            placeholder = np.zeros((400, 600, 3), dtype=np.uint8)
+            cv2.putText(
+                placeholder,
+                "Attention visualization disabled",
+                (50, 200),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 255, 255),
+                2,
+            )
+            results["attention_visualizations"].append(placeholder)
 
         hand_predictions.append((pred_class, confidence))
         # Store detailed data for this hand, including probabilities
@@ -841,13 +909,51 @@ def process_image(input_image: np.ndarray, progress=gr.Progress()) -> Dict:
 
 def create_visualization(results: Dict) -> Tuple:
     """Create visualization outputs for Gradio"""
-    # Original image with detections (already scaled in draw_detections)
+    # Проверяем, были ли найдены руки
+    if results.get("no_hands_found", False):
+        # Возвращаем только детекцию и сообщение об ошибке
+        detection_img = results.get("detections_image", results.get("original_image"))
+
+        # Пустая карта глубины
+        depth_display = np.zeros(
+            (CONFIG["display_image_size"][1], CONFIG["display_image_size"][0], 3),
+            dtype=np.uint8,
+        )
+
+        # Пустая визуализация внимания (если включена)
+        visualize_attention = results.get("visualize_attention", True)
+        if visualize_attention:
+            attention_visualization = np.zeros((600, 600, 3), dtype=np.uint8)
+            attention_height = 600
+        else:
+            attention_visualization = None
+            attention_height = 0
+
+        # Пустая диаграмма вероятностей
+        probability_chart_display = np.zeros(
+            (600, 800, 3),
+            dtype=np.uint8,
+        )
+
+        # Сообщение об ошибке
+        prediction_text = results.get("final_prediction", "Руки не обнаружены")
+
+        return (
+            detection_img,
+            depth_display,
+            attention_visualization,
+            probability_chart_display,
+            prediction_text,
+            gr.update(height=600),  # Высота для диаграммы вероятностей
+            gr.update(height=attention_height),  # Высота для визуализации внимания
+        )
+
+    # Если руки найдены, продолжаем обычную визуализацию
     detection_img = results.get("detections_image", results.get("original_image"))
 
     # Depth map (if available)
     depth_img = results.get("depth_map")
     if depth_img is not None:
-        # Scale depth map to match detection image size and maintain aspect ratio
         depth_display, _, _, _ = scale_image_for_display(
             cv2.applyColorMap(depth_img, cv2.COLORMAP_JET), CONFIG["display_image_size"]
         )
@@ -857,83 +963,39 @@ def create_visualization(results: Dict) -> Tuple:
             dtype=np.uint8,
         )
 
-    # Hand crops
-    hand_images = results.get("hand_images", [])
-    hand_depth_maps = results.get("hand_depth_maps", [])
     hand_predictions_data = results.get("hand_predictions", [])
-
-    # Create a grid for hand images that fills the output space effectively
-    max_hands = 2
-    hand_composites = []
-
-    for i in range(max_hands):
-        if i < len(hand_images):
-            rgb_img = hand_images[i]
-            depth_img_single = hand_depth_maps[i] if i < len(hand_depth_maps) else None
-
-            # Create composite image (RGB | Depth)
-            if depth_img_single is not None:
-                # Resize depth to match RGB
-                depth_resized = cv2.resize(
-                    depth_img_single,
-                    (rgb_img.shape[1], rgb_img.shape[0]),
-                    interpolation=cv2.INTER_CUBIC,
-                )
-                if len(depth_resized.shape) == 2:
-                    depth_resized = cv2.applyColorMap(depth_resized, cv2.COLORMAP_JET)
-                # Stack horizontally
-                composite = np.hstack([rgb_img, depth_resized])
-            else:
-                # If no depth, double the RGB image width for visual balance
-                composite = np.hstack([rgb_img, rgb_img])
-
-            hand_composites.append(composite)
-        else:
-            # Placeholder: Create an empty composite image (e.g., 128x256 filled with zeros)
-            hand_composites.append(np.zeros((128, 256, 3), dtype=np.uint8))
-
-    # Stack hand composites vertically
-    # if hand_composites:
-    #     # To make it square, we want height to be roughly equal to width after stacking
-    #     # If 2 hands: stack v, if 1 hand: keep as is.
-    #     hand_display_raw = (
-    #         np.vstack(hand_composites)
-    #         if len(hand_composites) > 1
-    #         else hand_composites[0]
-    #     )
-    #     # Scale the hand composite to fill its designated Gradio panel (height=600, width=600 to be square)
-    #     hand_target_size = CONFIG["hand_collage_size"]
-    #     hand_display = cv2.resize(
-    #         hand_display_raw, hand_target_size, interpolation=cv2.INTER_CUBIC
-    #     )  # Upscale to fill panel
-    # else:
-
-    #     # hand_display = np.zeros(
-    #     #     CONFIG["hand_collage_size"], dtype=np.uint8
-    #     # )  # Default size matching expected panel
 
     # Generate probability chart(s) for each hand
     probability_charts = create_probability_chart_for_hands(hand_predictions_data)
-    # If no charts were generated, create a placeholder
+
+    # Calculate dynamic height based on number of hands для диаграммы вероятностей
     if not probability_charts:
-        probability_charts.append(
-            np.zeros((CONFIG["probability_chart_height"], 600, 3), dtype=np.uint8)
-        )
-
-    # If there are multiple charts, stack them vertically
-    if len(probability_charts) > 1:
-        probability_chart_display = np.hstack(probability_charts)
-    else:
+        probability_chart_display = np.zeros((600, 800, 3), dtype=np.uint8)
+        probability_height = 600
+    elif len(probability_charts) == 1:
         probability_chart_display = probability_charts[0]
+        probability_height = 600
+    else:
+        # Stack charts vertically for two hands
+        probability_chart_display = np.vstack(probability_charts)
+        probability_height = 1200  # Double height for two hands
 
+    # Calculate dynamic height for attention visualization
+    visualize_attention = results.get("visualize_attention", True)
     attention_visualizations = results["attention_visualizations"]
-    if len(attention_visualizations) > 1:
+    
+    if not visualize_attention:
+        attention_visualization = None
+        attention_height = 0
+    elif len(attention_visualizations) > 1:
+        # Stack attention visualizations vertically for two hands
         attention_visualization = np.vstack(attention_visualizations)
+        attention_height = 1200  # Double height for two hands
     else:
         attention_visualization = attention_visualizations[0]
+        attention_height = 600
 
-
-    # Prediction text (now only summary info, details in chart)
+    # Prediction text
     prediction_text = (
         f"Итоговое предсказание: {results.get('final_prediction', 'неизвестен')}\n"
         f"Время анализа: {results.get('processing_time', 0):.2f}с\n\n"
@@ -949,10 +1011,11 @@ def create_visualization(results: Dict) -> Tuple:
     return (
         detection_img,
         depth_display,
-        # hand_display,
         attention_visualization,
         probability_chart_display,
         prediction_text,
+        gr.update(height=probability_height),  # Динамическая высота для диаграммы вероятностей
+        gr.update(height=attention_height),    # Динамическая высота для визуализации внимания
     )
 
 
@@ -967,15 +1030,18 @@ with gr.Blocks(
     title="Мультимодальное распознавание жестов", theme=gr.themes.Soft()
 ) as demo:
     gr.Markdown("# Мультимодальное распознавание жестов")
-
     with gr.Row():
         with gr.Column():
             input_image = gr.Image(
                 label="Исходное изображение",
-                # sources=["upload", "webcam"],
                 type="numpy",
                 height=600,
-                # show_download_button=True,
+            )
+
+            visualize_attention_checkbox = gr.Checkbox(
+                label="Визуализировать внимание",
+                value=True,
+                info="Может занять несколько минут.",
             )
 
             process_btn = gr.Button(
@@ -990,68 +1056,100 @@ with gr.Blocks(
         with gr.Column():
             depth_output = gr.Image(label="Карта глубины", height=600)
 
-    # with gr.Row():
-        
-
-        # with gr.Column():
-        #     hands_output = gr.Image(
-        #         label="Вырезанные руки (слева: RGB, справа: карта глубины)", height=600
-        #     )
-
-    with gr.Row():
-        with gr.Column():
-            attention_output = gr.Image(
-                label="Визуализация внимания модели", 
-                height=800  # или 900 для большего размера
-            )
-
     with gr.Row():
         with gr.Column(scale=2.5):
             probability_chart_output = gr.Image(
-                label="Распределение вероятностей для рук",
-                height=CONFIG["probability_chart_height"],
+                label="Распределение вероятностей",
+                height=600,  # Начальная высота
             )
         with gr.Column(scale=1):
             prediction_output = gr.Textbox(label="Предсказания", lines=10, max_lines=20)
 
-    # Processing pipeline
-    def process_and_display(image):
+    # Компонент визуализации внимания
+    attention_output = gr.Image(
+        label="Визуализация внимания модели",
+        height=400,  # Начальная высота
+        visible=True,
+    )
+
+    # Измененная функция, которая возвращает результаты и обновления для компонентов
+    def process_and_display(image, visualize_attention):
         if image is None:
-            # 6 значений: 5 None для изображений + сообщение об ошибке
-            return None, None, None, None, None, "Пожалуйста, сначала загрузите изображение"
+            # Возвращаем None для изображений, пустую строку для текста, и update для видимости
+            return (
+                None,
+                None,
+                gr.update(visible=visualize_attention, value=None, height=0),
+                None,
+                "",
+                gr.update(height=600),
+                gr.update(height=0),
+            )
+
+        results = process_image(image, visualize_attention)
+        (
+            detection_img,
+            depth_display,
+            attention_visualization,
+            probability_chart_display,
+            prediction_text,
+            probability_height_update,
+            attention_height_update,
+        ) = create_visualization(results)
+
+        # Определяем видимость компонента внимания
+        attention_visible = visualize_attention and attention_visualization is not None
         
-        results = process_image(image)
-        return create_visualization(results)
+        return (
+            detection_img,
+            depth_display,
+            gr.update(
+                value=attention_visualization, 
+                visible=attention_visible,
+                height=attention_height_update["height"] if attention_visible else 0
+            ),
+            probability_chart_display,
+            prediction_text,
+            probability_height_update,
+            attention_height_update,
+        )
 
     process_btn.click(
         fn=process_and_display,
-        inputs=[input_image],
+        inputs=[input_image, visualize_attention_checkbox],
         outputs=[
             detection_output,
             depth_output,
-            # hands_output,
-            attention_output,  # 4-е место
-            probability_chart_output,  # 5-е место
-            prediction_output,  # 6-е место
+            attention_output,
+            probability_chart_output,
+            prediction_output,
+            probability_chart_output,  # Обновляем высоту диаграммы вероятностей
+            attention_output,          # Обновляем высоту визуализации внимания
         ],
     )
 
-    # Clear function
     def clear_all():
-        # 7 значений: 6 None для изображений + пустая строка
-        return None, None, None, None, None, ""
+        return (
+            None,
+            None,
+            gr.update(visible=False, value=None, height=0),
+            None,
+            "",
+            gr.update(height=600),
+            gr.update(height=0),
+        )
 
     clear_btn.click(
         fn=clear_all,
         inputs=[],
         outputs=[
-            input_image,  # 1
-            detection_output,  # 2
-            depth_output,  # 3
-            # hands_output,  # 4
-            attention_output,  # 5
-            probability_chart_output,  # 6
-            prediction_output,  # 7
+            input_image,
+            detection_output,
+            attention_output,
+            probability_chart_output,
+            prediction_output,
+            probability_chart_output,  # Обновляем высоту диаграммы вероятностей
+            attention_output,          # Обновляем высоту визуализации внимания
         ],
     )
 
@@ -1061,8 +1159,8 @@ with gr.Blocks(
         value=EXAMPLE_IMAGES_LIST,  # Список кортежей (изображение, метка)
         label="Примеры для анализа",
         columns=6,
-        # rows=2,
-        height=600,
+        rows=2.5,
+        height=500,
         preview=False,
         allow_preview=False,
         show_label=True,
@@ -1081,17 +1179,6 @@ with gr.Blocks(
         fn=load_from_gallery,
         inputs=None,
         outputs=[input_image],
-    )
-
-    gr.Markdown(
-        """
----
-**Технические детали**
-- Детекция человека: YOLOv13L
-- Детекция рук: YOLOv10x (обученная на корпусе HaGRID)
-- Оценка глубины: Pixel-Perfect Depth с моделью Depth Anything V2
-- Классификация: VSSD (Vision Mamba 2) с мультимодальным слиянием
-"""
     )
 
 # =============================================================================
