@@ -1041,7 +1041,7 @@ with gr.Blocks(
             visualize_attention_checkbox = gr.Checkbox(
                 label="Визуализировать внимание",
                 value=True,
-                info="Может занять несколько минут.",
+                info="Это может занять несколько минут.",
             )
 
             process_btn = gr.Button(
@@ -1132,6 +1132,7 @@ with gr.Blocks(
         return (
             None,
             None,
+            None,
             gr.update(visible=False, value=None, height=0),
             None,
             "",
@@ -1145,6 +1146,7 @@ with gr.Blocks(
         outputs=[
             input_image,
             detection_output,
+            depth_output,
             attention_output,
             probability_chart_output,
             prediction_output,
