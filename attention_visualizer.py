@@ -3,6 +3,7 @@ import warnings
 from typing import List, Optional, Tuple
 
 import cv2
+from matplotlib import rcParams
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -596,8 +597,21 @@ class AttentionVisualizer:
 
         # === Comprehensive comparison ===
 
+        plt.style.use("dark_background")
+        rcParams.update(
+            {
+                "axes.facecolor": "#111111",
+                "figure.facecolor": "#0a0a0a",
+                "axes.edgecolor": "#333333",
+                "axes.labelcolor": "white",
+                "text.color": "white",
+                "xtick.color": "white",
+                "ytick.color": "white",
+            }
+        )
+
         # Side-by-side comparison
-        fig = plt.figure(figsize=(16, 4.3))
+        fig = plt.figure(figsize=(16, 4.45))
         gs = fig.add_gridspec(
             2, 5, hspace=0.05, wspace=0.15, width_ratios=[0.5, 1, 2, 2, 2]
         )  # First col for labels
@@ -609,8 +623,8 @@ class AttentionVisualizer:
             0.5,
             0.5,
             "RGB\nизображение",
-            fontsize=14,
-            fontweight="bold",
+            fontsize=11,
+            # fontweight="bold",
             rotation=90,
             va="center",
             ha="center",
@@ -623,8 +637,8 @@ class AttentionVisualizer:
             0.5,
             0.5,
             "Карта\nглубины",
-            fontsize=14,
-            fontweight="bold",
+            fontsize=11,
+            # fontweight="bold",
             rotation=90,
             va="center",
             ha="center",
@@ -643,7 +657,7 @@ class AttentionVisualizer:
         # Row 2: LRP - Now these will be properly sized
         ax3 = fig.add_subplot(gs[0, 2])
         ax3.imshow(np.concatenate([rgb_lrp_hm_only, rgb_lrp_vis], axis=1))  # 256x128
-        ax3.set_title("LRP", fontsize=12, fontweight="bold")
+        ax3.set_title("LRP", fontsize=9)
         ax3.axis("off")
 
         ax4 = fig.add_subplot(gs[1, 2])
@@ -655,7 +669,7 @@ class AttentionVisualizer:
         # Row 3: Occlusion
         ax5 = fig.add_subplot(gs[0, 3])
         ax5.imshow(np.concatenate([rgb_occ_hm_only, rgb_occ_vis], axis=1))  # 256x128
-        ax5.set_title("Occlusion Sensitivity", fontsize=12, fontweight="bold")
+        ax5.set_title("Occlusion Sensitivity", fontsize=9)
         ax5.axis("off")
 
         ax6 = fig.add_subplot(gs[1, 3])
@@ -667,7 +681,7 @@ class AttentionVisualizer:
         ax7.imshow(
             np.concatenate([rgb_smooth_hm_only, rgb_smooth_vis], axis=1)
         )  # 256x128
-        ax7.set_title("SmoothGrad", fontsize=12, fontweight="bold")
+        ax7.set_title("SmoothGrad", fontsize=9)
         ax7.axis("off")
 
         ax8 = fig.add_subplot(gs[1, 4])
@@ -680,7 +694,7 @@ class AttentionVisualizer:
 
         fig.suptitle(
             f"Визуализация внимания руки #{hand_id}",
-            fontsize=18,
+            fontsize=13,
             fontweight="bold",
             y=0.98,
         )
