@@ -13,7 +13,7 @@ test_parquet = "/home/serg_fedchn/Homework/thesis/data/processed_hands/parquet/t
 data_root = "/home/serg_fedchn/Homework/thesis/data/processed_hands/images"
 
 # Data sampling for faster experiments
-train_subsample = 1
+train_subsample = 0.1
 val_subsample = 1
 test_subsample = 1
 
@@ -22,7 +22,7 @@ num_workers = 16
 
 [logging]
 output_dir = "./outputs"
-experiment_name = "vssd_base_cross_attention_fusion"
+experiment_name = "vssd_micro_cross_attention_fusion_rgb_pretrained"
 log_interval = 100
 save_interval = 1
 save_best = true
@@ -39,16 +39,18 @@ modality = "fusion"
 # Projection layers автоматически выравнивают размерности признаков.
 
 # Для RGB ветки
-# rgb_architecture = "vssd"        # "vssd", "resnet18/34/50", "vit"
-# rgb_vssd_variant = "base"       # "micro", "tiny", "small", "base" (если rgb_architecture="vssd")
-# rgb_pretrained = true
-# rgb_freeze_backbone = false
+rgb_architecture = "vssd"        # "vssd", "resnet18/34/50", "vit"
+rgb_vssd_variant = "micro"       # "micro", "tiny", "small", "base" (если rgb_architecture="vssd")
+rgb_freeze_backbone = false
+rgb_pretrained = true
+rgb_pretrained_ckpt = 'checkpoints/vssd_micro_best.pth'
 
 # Для Depth ветки
-# depth_architecture = "vssd"      # "vssd", "resnet18/34/50", "vit"
-# depth_vssd_variant = "small"      # "micro", "tiny", "small", "base" (если depth_architecture="vssd")
-# depth_pretrained = true
-# depth_freeze_backbone = false
+depth_architecture = "vssd"      # "vssd", "resnet18/34/50", "vit"
+depth_vssd_variant = "micro"      # "micro", "tiny", "small", "base" (если depth_architecture="vssd")
+depth_freeze_backbone = false
+depth_pretrained = false
+depth_pretrained_ckpt = '' 
 
 # Unified dimension для fusion (опционально)
 # Если не указано, используется max(rgb_feat_dim, depth_feat_dim)
@@ -75,7 +77,7 @@ fusion_method = "cross_attention"
 probability_fusion_heads = 1
 
 # Image dimensions
-image_size = 128
+image_size = 224
 
 # Number of gesture classes
 # NOTE: Use 33 for training (thumb_index2 merged into thumb_index)
@@ -91,7 +93,7 @@ pretrained_ckpt = ""
 
 [training]
 # Training hyperparameters
-batch_size = 256
+batch_size = 80
 num_epochs = 20
 learning_rate = 3e-5
 weight_decay = 5e-4

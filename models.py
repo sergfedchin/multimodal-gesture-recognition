@@ -543,11 +543,15 @@ class DualBranchFusionClassifier(nn.Module):
         rgb_vssd_config = None
         if rgb_architecture == "vssd":
             rgb_vssd_variant = config["model"].get("rgb_vssd_variant", config["model"]["vssd_variant"])
+            rgb_pretrained_ckpt = config["model"].get(
+                "rgb_pretrained_ckpt",
+                config["model"].get("pretrained_ckpt", ""),
+            )
             rgb_vssd_config = {
                 "variant": rgb_vssd_variant,
                 "image_size": config["model"]["image_size"],
                 "vssd_repo_path": config["model"]["vssd_repo_path"],
-                "pretrained_ckpt": config["model"].get("pretrained_ckpt", ""),
+                "pretrained_ckpt": rgb_pretrained_ckpt,
             }
             logger.info(f"RGB branch: VSSD-{rgb_vssd_variant.upper()}, pretrained={rgb_pretrained}, freeze={rgb_freeze_backbone}")
         else:
@@ -574,11 +578,15 @@ class DualBranchFusionClassifier(nn.Module):
         depth_vssd_config = None
         if depth_architecture == "vssd":
             depth_vssd_variant = config["model"].get("depth_vssd_variant", config["model"]["vssd_variant"])
+            depth_pretrained_ckpt = config["model"].get(
+                "depth_pretrained_ckpt",
+                config["model"].get("pretrained_ckpt", ""),
+            )
             depth_vssd_config = {
                 "variant": depth_vssd_variant,
                 "image_size": config["model"]["image_size"],
                 "vssd_repo_path": config["model"]["vssd_repo_path"],
-                "pretrained_ckpt": config["model"].get("pretrained_ckpt", ""),
+                "pretrained_ckpt": depth_pretrained_ckpt,
             }
             logger.info(f"Depth branch: VSSD-{depth_vssd_variant.upper()}, pretrained={depth_pretrained}, freeze={depth_freeze_backbone}")
         else:
