@@ -4,6 +4,7 @@ Combines preprocessing (YOLOv13, PPD depth estimation) with VSSD-based classific
 """
 
 import os
+import subprocess
 import sys
 import time
 import warnings
@@ -63,7 +64,43 @@ CONFIG = {
     "probability_chart_height": 750,  # Height for the probability chart
     "checkpoints_repo": "sergfedchin/gesture-checkpoints",
     "examples_repo": "sergfedchin/gestures-examples",
+    "vssd_repo_url": "https://github.com/YuHengsss/VSSD.git",
+    "vssd_repo_ref": "main",
+    "vssd_repo_dir": "VSSD",
 }
+
+
+def ensure_vssd_repo_available() -> Path:
+    """Ensure VSSD repository is available locally and return its path."""
+    repo_dir = Path(os.getenv("VSSD_REPO_DIR", CONFIG["vssd_repo_dir"]))
+
+    models_file = repo_dir / "classification" / "models" / "mamba2.py"
+    if models_file.exists():
+        print(f"✅ VSSD repo already available at: {repo_dir.resolve()}")
+        return repo_dir.resolve()
+
+    repo_url = os.getenv("VSSD_REPO_URL", CONFIG["vssd_repo_url"])
+    repo_ref = os.getenv("VSSD_REPO_REF", CONFIG["vssd_repo_ref"])
+
+    if repo_dir.exists() and not models_file.exists():
+        raise FileNotFoundError(
+            f"Directory {repo_dir} exists, but VSSD files were not found."
+        )
+
+    print(f"⬇️ VSSD repo not found, cloning from {repo_url}...")
+    subprocess.run(["git", "clone", "--depth", "1", repo_url, str(repo_dir)], check=True)
+
+    if repo_ref and repo_ref != "main":
+        subprocess.run(["git", "-C", str(repo_dir), "checkout", repo_ref], check=True)
+
+    if not models_file.exists():
+        raise FileNotFoundError(
+            "VSSD repository was cloned, but expected file is missing: "
+            f"{models_file}"
+        )
+
+    print(f"✅ VSSD repo is ready at: {repo_dir.resolve()}")
+    return repo_dir.resolve()
 
 
 def ensure_example_images_available() -> None:
@@ -301,6 +338,10 @@ class ModelManager:
 
             # Load config
             config = load_config(CONFIG["model_config"])
+
+            # Ensure VSSD repo is present and patch path from local runtime.
+            vssd_repo_path = ensure_vssd_repo_available()
+            config["model"]["vssd_repo_path"] = str(vssd_repo_path)
 
             # Update config for inference
             config["model"]["image_size"] = CONFIG["classification_image_size"]

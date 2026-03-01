@@ -21,6 +21,7 @@ pinned: false
 - Демо запускается **без attention visualization** (ускоряет и упрощает CPU-режим).
 - Чекпоинты автоматически подгружаются из HF Hub: **`sergfedchin/gesture-checkpoints`** в папку `checkpoints/`.
 - Локальный пакет `yolov13` ставится из подпапки проекта через `requirements.txt` (без `git clone`).
+- При старте приложение автоматически клонирует **VSSD** в `./VSSD` (если папки ещё нет).
 
 ---
 
@@ -116,3 +117,20 @@ git push
 - Первую загрузку делать терпеливо: скачивание весов + холодный старт.
 - Если сборка падает на тяжелых зависимостях, зафиксировать версии `torch/torchvision` под конкретный рантайм Spaces.
 - Держать веса в отдельном model repo (как сейчас), а не в кодовом репозитории Space.
+
+---
+
+## VSSD в Hugging Face Space
+
+В Space нельзя полагаться на локальный абсолютный путь из `config.toml` (например,
+`/home/.../VSSD`). Поэтому `app.py` теперь делает следующее автоматически:
+
+1. Проверяет наличие `./VSSD/classification/models/mamba2.py`.
+2. Если нет — выполняет `git clone --depth 1 https://github.com/YuHengsss/VSSD.git VSSD`.
+3. Подменяет `config["model"]["vssd_repo_path"]` на этот локальный путь перед сборкой модели.
+
+Опционально можно управлять поведением через переменные окружения в Settings → Variables:
+
+- `VSSD_REPO_URL` — URL репозитория (по умолчанию `https://github.com/YuHengsss/VSSD.git`)
+- `VSSD_REPO_REF` — ветка/тег/коммит (по умолчанию `main`)
+- `VSSD_REPO_DIR` — директория, куда клонировать (по умолчанию `VSSD`)
