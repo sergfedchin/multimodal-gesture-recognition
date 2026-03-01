@@ -7,7 +7,6 @@ opencv-python>=4.11.0.86
 pillow>=9.0.0
 matplotlib>=3.7.0
 gradio>=6.4.0
-ultralytics>=8.3.0
 
 # Model/runtime dependencies used by the project
 chardet>=5.2.0
@@ -24,5 +23,6 @@ tqdm>=4.65.0
 yacs>=0.1.8
 
 # Install this repository and local YOLOv13 package from subfolder
--e .
--e ./preprocess/yolov13
+# -e .
+# -e ./preprocess/yolov13
+-e git+https://github.com/iMoonLab/yolov13.git@main#egg=ultralytics
