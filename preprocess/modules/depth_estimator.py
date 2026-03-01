@@ -43,7 +43,8 @@ class DepthEstimator:
             
             self.model = PixelPerfectDepth(
                 semantics_pth=str(semantics_pth),
-                sampling_steps=sampling_steps
+                sampling_steps=sampling_steps,
+                device=self.device_str,
             )
             
             # Load main PPD checkpoint

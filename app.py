@@ -3,23 +3,29 @@ Gesture Recognition Demo App
 Combines preprocessing (YOLOv13, PPD depth estimation) with VSSD-based classification
 """
 
+import os
 import sys
 import time
 import warnings
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from huggingface_hub import snapshot_download
+from matplotlib import rcParams
+
+
+# Force CPU mode by default for Space/local CPU deployment.
+if os.getenv("FORCE_CPU", "1") == "1":
+    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+
 import cv2
 import gradio as gr
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from matplotlib import rcParams
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from PIL import Image
 from torchvision import transforms
-
-from attention_visualizer import AttentionVisualizer
 
 warnings.filterwarnings("ignore")
 
@@ -55,6 +61,7 @@ CONFIG = {
     "detection_line_thickness": 3,
     "hand_collage_size": (600, 600),  # Size for the hand collage panel
     "probability_chart_height": 750,  # Height for the probability chart
+    "checkpoints_repo": "sergfedchin/gesture-checkpoints",
 }
 
 # =============================================================================
@@ -87,6 +94,40 @@ for p in example_paths:
         print(f"❌ Ошибка загрузки {p.name}: {e}")
 
 print(f"🖼️ Загружено {len(EXAMPLE_IMAGES_LIST)} примеров для галереи\n")
+
+
+def ensure_checkpoints_available() -> None:
+    """Download required checkpoints from Hugging Face Hub if they are missing."""
+    checkpoints_dir = Path("checkpoints")
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+
+    required_files = [
+        Path(CONFIG["yolov10_weights"]),
+        Path(CONFIG["yolov13_weights"]),
+        Path(CONFIG["ppd_checkpoint"]),
+        Path(CONFIG["depth_anything_checkpoint"]),
+        Path(CONFIG["model_checkpoint"]),
+    ]
+
+    missing_files = [path for path in required_files if not path.exists()]
+    if not missing_files:
+        print("✅ Все чекпоинты уже доступны локально")
+        return
+
+    print("⬇️ Не найдены чекпоинты, загружаем из Hugging Face Hub...")
+    snapshot_download(
+        repo_id=CONFIG["checkpoints_repo"],
+        repo_type="model",
+        local_dir="checkpoints",
+        local_dir_use_symlinks=False,
+    )
+
+    still_missing = [path for path in required_files if not path.exists()]
+    if still_missing:
+        missing = ", ".join(str(path) for path in still_missing)
+        raise FileNotFoundError(f"Не удалось найти обязательные чекпоинты: {missing}")
+
+    print("✅ Чекпоинты успешно загружены")
 
 # Gesture classes (33 classes, excluding no_gesture)
 GESTURE_CLASSES = [
@@ -170,11 +211,6 @@ class ModelManager:
         self.classification_model, self.classification_config = (
             self._load_classification_model()
         )
-        # Визуализатор внимания
-        self.visualizer = AttentionVisualizer(
-            self.classification_model, GESTURE_CLASSES, image_size=128
-        )
-
         self.models_loaded = True
         print("All models loaded successfully!")
 
@@ -194,8 +230,8 @@ class ModelManager:
                     "inference_height": CONFIG["ppd_inference_size"][1],
                     "sampling_steps": 4,
                     "batch_size": 1,
-                    "device": "cuda" if torch.cuda.is_available() else "cpu",
-                    "use_fp16": True,
+                    "device": "cpu",
+                    "use_fp16": False,
                 }
             }
 
@@ -218,9 +254,7 @@ class ModelManager:
 
             # Update config for inference
             config["model"]["image_size"] = CONFIG["classification_image_size"]
-            config["hardware"]["device"] = (
-                "cuda" if torch.cuda.is_available() else "cpu"
-            )
+            config["hardware"]["device"] = "cpu"
 
             # Build model
             model = build_model(config)
@@ -362,7 +396,7 @@ def estimate_depth(image: np.ndarray) -> Optional[np.ndarray]:
 
         # Run inference
         with torch.no_grad():
-            depth, _ = manager.ppd_model.infer_image(image_cv)
+            depth, _ = manager.ppd_model.infer_image(image_cv, use_fp16=False)
 
         # Resize to original image size
         H, W = image.shape[:2]
@@ -463,18 +497,22 @@ def classify_hand(hand_rgb: np.ndarray, hand_depth: Optional[np.ndarray] = None)
         # print("Depth has been extracted!")
         depth_tensor: torch.Tensor = depth_tensor.to(device)
     # Inference
+    modality = manager.classification_config["model"]["modality"]
+
+    # For depth/fusion models, keep inference alive even if depth branch failed.
+    if depth_tensor is None and modality in ["depth", "fusion"]:
+        depth_tensor = torch.zeros(
+            (1, 1, CONFIG["classification_image_size"], CONFIG["classification_image_size"]),
+            dtype=rgb_tensor.dtype,
+            device=device,
+        )
+
     with torch.no_grad():
-        if manager.classification_config["model"]["modality"] == "rgb":
+        if modality == "rgb":
             logits = manager.classification_model(rgb_tensor)
-        elif (
-            manager.classification_config["model"]["modality"] == "depth"
-            # and depth_tensor is not None
-        ):
+        elif modality == "depth":
             logits = manager.classification_model(depth_tensor)
-        elif (
-            manager.classification_config["model"]["modality"] == "fusion"
-            # and depth_tensor is not None
-        ):
+        elif modality == "fusion":
             logits = manager.classification_model(rgb_tensor, depth_tensor)
         else:
             # Fallback to RGB only
@@ -733,7 +771,6 @@ def create_probability_chart_for_hands(
 
 def process_image(
     input_image: np.ndarray,
-    visualize_attention: bool = True,  # Новая опция
     progress=gr.Progress(),
 ) -> Dict:
     """
@@ -757,11 +794,9 @@ def process_image(
         "hand_images": [],
         "hand_depth_maps": [],
         "hand_predictions": [],  # Store detailed hand data including probabilities
-        "attention_visualizations": [],
         "final_prediction": " ",
         "processing_time": 0,
         "no_hands_found": False,  # Флаг, что руки не найдены
-        "visualize_attention": visualize_attention,  # Сохраняем настройку визуализации
     }
 
     start_time = time.time()
@@ -779,9 +814,6 @@ def process_image(
 
         # Рисуем только детекцию человека (если есть)
         results["detections_image"] = draw_detections(input_image, person_bbox, [])
-
-        # Создаем пустые визуализации
-        results["attention_visualizations"] = [np.zeros((400, 600, 3), dtype=np.uint8)]
 
         results["processing_time"] = time.time() - start_time
         return results
@@ -862,30 +894,6 @@ def process_image(
             hand_rgb, results["hand_depth_maps"][-1] if depth_map is not None else None
         )
 
-        # Визуализация внимания только если включена опция
-        if visualize_attention:
-            progress(
-                0.4 + 0.2 * i + 0.1,
-                desc=f"Создание визуализаций внимания для руки {i + 1}...",
-            )
-            attention_visualization = manager.visualizer.generate_all_visualizations(
-                hand_rgb, results["hand_depth_maps"][-1], i + 1
-            )
-            results["attention_visualizations"].append(attention_visualization)
-        else:
-            # Если визуализация отключена, добавляем заглушку
-            placeholder = np.zeros((400, 600, 3), dtype=np.uint8)
-            cv2.putText(
-                placeholder,
-                "Attention visualization disabled",
-                (50, 200),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (255, 255, 255),
-                2,
-            )
-            results["attention_visualizations"].append(placeholder)
-
         hand_predictions.append((pred_class, confidence))
         # Store detailed data for this hand, including probabilities
         results["hand_predictions"].append(
@@ -920,15 +928,6 @@ def create_visualization(results: Dict) -> Tuple:
             dtype=np.uint8,
         )
 
-        # Пустая визуализация внимания (если включена)
-        visualize_attention = results.get("visualize_attention", True)
-        if visualize_attention:
-            attention_visualization = np.zeros((600, 600, 3), dtype=np.uint8)
-            attention_height = 600
-        else:
-            attention_visualization = None
-            attention_height = 0
-
         # Пустая диаграмма вероятностей
         probability_chart_display = np.zeros(
             (600, 800, 3),
@@ -941,11 +940,9 @@ def create_visualization(results: Dict) -> Tuple:
         return (
             detection_img,
             depth_display,
-            attention_visualization,
             probability_chart_display,
             prediction_text,
             gr.update(height=600),  # Высота для диаграммы вероятностей
-            gr.update(height=attention_height),  # Высота для визуализации внимания
         )
 
     # Если руки найдены, продолжаем обычную визуализацию
@@ -980,21 +977,6 @@ def create_visualization(results: Dict) -> Tuple:
         probability_chart_display = np.vstack(probability_charts)
         probability_height = 1200  # Double height for two hands
 
-    # Calculate dynamic height for attention visualization
-    visualize_attention = results.get("visualize_attention", True)
-    attention_visualizations = results["attention_visualizations"]
-    
-    if not visualize_attention:
-        attention_visualization = None
-        attention_height = 0
-    elif len(attention_visualizations) > 1:
-        # Stack attention visualizations vertically for two hands
-        attention_visualization = np.vstack(attention_visualizations)
-        attention_height = 1200  # Double height for two hands
-    else:
-        attention_visualization = attention_visualizations[0]
-        attention_height = 600
-
     # Prediction text
     prediction_text = (
         f"Итоговое предсказание: {results.get('final_prediction', 'неизвестен')}\n"
@@ -1011,11 +993,9 @@ def create_visualization(results: Dict) -> Tuple:
     return (
         detection_img,
         depth_display,
-        attention_visualization,
         probability_chart_display,
         prediction_text,
         gr.update(height=probability_height),  # Динамическая высота для диаграммы вероятностей
-        gr.update(height=attention_height),    # Динамическая высота для визуализации внимания
     )
 
 
@@ -1036,12 +1016,6 @@ with gr.Blocks(
                 label="Исходное изображение",
                 type="numpy",
                 height=600,
-            )
-
-            visualize_attention_checkbox = gr.Checkbox(
-                label="Визуализировать внимание",
-                value=True,
-                info="Это может занять несколько минут.",
             )
 
             process_btn = gr.Button(
@@ -1065,66 +1039,44 @@ with gr.Blocks(
         with gr.Column(scale=1):
             prediction_output = gr.Textbox(label="Предсказания", lines=10, max_lines=20)
 
-    # Компонент визуализации внимания
-    attention_output = gr.Image(
-        label="Визуализация внимания модели",
-        height=400,  # Начальная высота
-        visible=True,
-    )
-
     # Измененная функция, которая возвращает результаты и обновления для компонентов
-    def process_and_display(image, visualize_attention):
+    def process_and_display(image):
         if image is None:
             # Возвращаем None для изображений, пустую строку для текста, и update для видимости
             return (
                 None,
                 None,
-                gr.update(visible=visualize_attention, value=None, height=0),
                 None,
                 "",
                 gr.update(height=600),
-                gr.update(height=0),
             )
 
-        results = process_image(image, visualize_attention)
+        results = process_image(image)
         (
             detection_img,
             depth_display,
-            attention_visualization,
             probability_chart_display,
             prediction_text,
             probability_height_update,
-            attention_height_update,
         ) = create_visualization(results)
 
-        # Определяем видимость компонента внимания
-        attention_visible = visualize_attention and attention_visualization is not None
-        
         return (
             detection_img,
             depth_display,
-            gr.update(
-                value=attention_visualization, 
-                visible=attention_visible,
-                height=attention_height_update["height"] if attention_visible else 0
-            ),
             probability_chart_display,
             prediction_text,
             probability_height_update,
-            attention_height_update,
         )
 
     process_btn.click(
         fn=process_and_display,
-        inputs=[input_image, visualize_attention_checkbox],
+        inputs=[input_image],
         outputs=[
             detection_output,
             depth_output,
-            attention_output,
             probability_chart_output,
             prediction_output,
             probability_chart_output,  # Обновляем высоту диаграммы вероятностей
-            attention_output,          # Обновляем высоту визуализации внимания
         ],
     )
 
@@ -1133,11 +1085,9 @@ with gr.Blocks(
             None,
             None,
             None,
-            gr.update(visible=False, value=None, height=0),
             None,
             "",
             gr.update(height=600),
-            gr.update(height=0),
         )
 
     clear_btn.click(
@@ -1147,11 +1097,9 @@ with gr.Blocks(
             input_image,
             detection_output,
             depth_output,
-            attention_output,
             probability_chart_output,
             prediction_output,
             probability_chart_output,  # Обновляем высоту диаграммы вероятностей
-            attention_output,          # Обновляем высоту визуализации внимания
         ],
     )
 
@@ -1208,6 +1156,8 @@ if __name__ == "__main__":
     print("\nStarting application...")
     print(f"Server: http://{args.server_name}:{args.server_port}")
     print("Press Ctrl+C to stop\n")
+
+    ensure_checkpoints_available()
 
     # Launch Gradio app
     demo.launch(

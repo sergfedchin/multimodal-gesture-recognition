@@ -13,17 +13,16 @@ class PixelPerfectDepth(nn.Module):
         self,
         semantics_pth="checkpoints/depth_anything_v2_vitl.pth",
         sampling_steps=10,
+        device: str = "cpu",
     ):
         super(PixelPerfectDepth, self).__init__()
 
-        DEVICE = torch.device(
-            "cuda"
-            if torch.cuda.is_available()
-            else "mps"
-            if torch.backends.mps.is_available()
-            else "cpu"
-        )
-        self.device = DEVICE
+        if device.startswith("cuda") and not torch.cuda.is_available():
+            device = "cpu"
+        elif device == "mps" and not torch.backends.mps.is_available():
+            device = "cpu"
+
+        self.device = torch.device(device)
 
         self.semantics_encoder = DepthAnythingV2(
             encoder="vitl", features=256, out_channels=[256, 512, 1024, 1024]
@@ -53,9 +52,14 @@ class PixelPerfectDepth(nn.Module):
         # Resize the image to match the training resolution area while keeping the original aspect ratio.
         resize_image = resize_keep_aspect(image)
         image = image2tensor(resize_image)
-        image = image.to(self.device)
+
+        model_device = next(self.parameters()).device
+        self.device = model_device
+        image = image.to(model_device)
+
+        use_mixed_precision = use_fp16 and model_device.type == "cuda"
         with torch.autocast(
-            device_type=self.device.type, dtype=torch.float16, enabled=True
+            device_type=model_device.type, dtype=torch.float16, enabled=use_mixed_precision
         ):
             depth = self.forward_test(image)
         return depth, resize_image
@@ -64,11 +68,14 @@ class PixelPerfectDepth(nn.Module):
     def forward_test(self, image):
         semantics = self.semantics_prompt(image)
         cond = image - 0.5
-        latent = torch.randn(size=[cond.shape[0], 1, cond.shape[2], cond.shape[3]]).to(
-            self.device
+        model_device = image.device
+        latent = torch.randn(
+            size=[cond.shape[0], 1, cond.shape[2], cond.shape[3]],
+            device=model_device,
         )
 
         for timestep in self.sampling_timesteps:
+            timestep = timestep.to(model_device)
             input = torch.cat([latent, cond], dim=1)
             pred = self.dit(x=input, semantics=semantics, timestep=timestep)
             latent = self.sampler.step(pred=pred, x_t=latent, t=timestep)

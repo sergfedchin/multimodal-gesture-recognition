@@ -7,3 +7,5 @@ __pycache__
 checkpoints/*
 !checkpoints/.gitkeep
 multimodal_gesture_recognition/outputs/
+outputs
+*.patch
