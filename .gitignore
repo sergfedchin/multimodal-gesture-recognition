@@ -9,3 +9,4 @@ checkpoints/*
 multimodal_gesture_recognition/outputs/
 outputs
 *.patch
+example_images
