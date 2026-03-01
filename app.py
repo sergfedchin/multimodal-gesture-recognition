@@ -62,7 +62,55 @@ CONFIG = {
     "hand_collage_size": (600, 600),  # Size for the hand collage panel
     "probability_chart_height": 750,  # Height for the probability chart
     "checkpoints_repo": "sergfedchin/gesture-checkpoints",
+    "examples_repo": "sergfedchin/gestures-examples",
 }
+
+
+def ensure_example_images_available() -> None:
+    """Download test images for the gallery from Hugging Face Hub if needed."""
+    EXAMPLES_PATH.mkdir(parents=True, exist_ok=True)
+
+    image_patterns = [
+        "*.jpg",
+        "*.jpeg",
+        "*.png",
+        "*.bmp",
+        "*.webp",
+        "*.JPG",
+        "*.JPEG",
+        "*.PNG",
+        "*.BMP",
+        "*.WEBP",
+    ]
+
+    existing_images = []
+    for pattern in image_patterns:
+        existing_images.extend(EXAMPLES_PATH.glob(pattern))
+
+    if existing_images:
+        print(f"✅ Примеры уже доступны локально: {len(existing_images)} файлов")
+        return
+
+    print("⬇️ Примеры не найдены, загружаем из Hugging Face Hub...")
+    snapshot_download(
+        repo_id=CONFIG["examples_repo"],
+        repo_type="dataset",
+        local_dir=EXAMPLES_PATH,
+        local_dir_use_symlinks=False,
+        allow_patterns=image_patterns,
+    )
+
+    downloaded_images = []
+    for pattern in image_patterns:
+        downloaded_images.extend(EXAMPLES_PATH.glob(pattern))
+
+    if not downloaded_images:
+        raise FileNotFoundError(
+            "Не удалось загрузить тестовые изображения из датасета "
+            f"{CONFIG['examples_repo']}"
+        )
+
+    print(f"✅ Примеры успешно загружены: {len(downloaded_images)} файлов")
 
 # =============================================================================
 # ЗАГРУЗКА ПРИМЕРОВ ПРИ СТАРТЕ
@@ -70,6 +118,8 @@ CONFIG = {
 EXAMPLES_PATH = Path("./example_images")
 EXAMPLE_IMAGES_LIST = []  # Глобальный список для хранения загруженных изображений
 example_paths = []
+
+ensure_example_images_available()
 
 # Собираем все подходящие файлы
 for ext in ["*.jpg", "*.jpeg", "*.png", "*.JPG", "*.JPEG", "*.PNG", "*.bmp", "*.BMP"]:
