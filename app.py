@@ -1192,10 +1192,23 @@ if __name__ == "__main__":
     parser.add_argument(
         "--share", action="store_true", help="Create a public share link"
     )
+    # Hugging Face Spaces health checks can only reach apps bound to 0.0.0.0
+    is_hf_spaces = bool(os.getenv("SPACE_ID") or os.getenv("HF_SPACE_ID"))
+    default_server_name = "0.0.0.0" if is_hf_spaces else "127.0.0.1"
+    default_server_port = int(os.getenv("PORT", "7860"))
+
     parser.add_argument(
-        "--server-name", type=str, default="127.0.0.1", help="Server address"
+        "--server-name",
+        type=str,
+        default=default_server_name,
+        help="Server address (defaults to 0.0.0.0 in HF Spaces)",
     )
-    parser.add_argument("--server-port", type=int, default=7860, help="Server port")
+    parser.add_argument(
+        "--server-port",
+        type=int,
+        default=default_server_port,
+        help="Server port (defaults to $PORT when set)",
+    )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 
     args = parser.parse_args()

@@ -16,6 +16,8 @@ pinned: false
 
 ## Что изменено для Spaces
 
+- В Space принудительно используется **Python 3.13** (через `python_version` в metadata блока README).
+- В Space сервер по умолчанию слушает `0.0.0.0` и использует порт из `$PORT` (важно для healthcheck HF Spaces).
 - Демо запускается **без attention visualization** (ускоряет и упрощает CPU-режим).
 - Чекпоинты автоматически подгружаются из HF Hub: **`sergfedchin/gesture-checkpoints`** в папку `checkpoints/`.
 - Локальный пакет `yolov13` ставится из подпапки проекта через `requirements.txt` (без `git clone`).
