@@ -88,7 +88,7 @@ for p in example_paths:
 
 print(f"🖼️ Загружено {len(EXAMPLE_IMAGES_LIST)} примеров для галереи\n")
 
-# Gesture classes (33 classes, excluding no_gesture)
+# Gesture classes (34 classes)
 GESTURE_CLASSES = [
     "call",
     "dislike",
@@ -126,6 +126,10 @@ GESTURE_CLASSES = [
     "thumb_index2",
 ]
 
+GESTURE_TRANSLATION = {
+    "call": "позвонить",
+    "ok": "окей",
+}
 
 # =============================================================================
 # MODEL LOADING FUNCTIONS
@@ -175,8 +179,44 @@ class ModelManager:
             self.classification_model, GESTURE_CLASSES, image_size=128
         )
 
+        self._print_pipeline_parameter_counts()
+
         self.models_loaded = True
         print("All models loaded successfully!")
+
+    @staticmethod
+    def _count_model_parameters(model) -> int:
+        """Count model parameters for torch modules and wrappers."""
+        if model is None:
+            return 0
+
+        torch_model = model.model if hasattr(model, "model") else model
+        if not isinstance(torch_model, torch.nn.Module):
+            return 0
+
+        return sum(parameter.numel() for parameter in torch_model.parameters())
+
+    def _print_pipeline_parameter_counts(self) -> None:
+        """Print total parameter counts for all pipeline models after loading."""
+        parameter_counts = {
+            "Person detection (YOLOv13L)": self._count_model_parameters(
+                self.yolov13_person
+            ),
+            "Hands detection (YOLOv10x)": self._count_model_parameters(
+                self.yolov10_hand
+            ),
+            "Depth estimation (PPD)": self._count_model_parameters(self.ppd_model),
+            "Gesture classification (custom)": self._count_model_parameters(
+                self.classification_model
+            ),
+        }
+
+        total_parameters = sum(parameter_counts.values())
+
+        print("\nPipeline parameter counts:")
+        for model_name, count in parameter_counts.items():
+            print(f"  - {model_name}: {count:,}")
+        print(f"  - Total pipeline parameters: {total_parameters:,}\n")
 
     def _load_ppd_model(self):
         """Load Pixel-Perfect Depth model"""
@@ -997,15 +1037,15 @@ def create_visualization(results: Dict) -> Tuple:
 
     # Prediction text
     prediction_text = (
-        f"Итоговое предсказание: {results.get('final_prediction', 'неизвестен')}\n"
-        f"Время анализа: {results.get('processing_time', 0):.2f}с\n\n"
+        f"# Итоговое предсказание: {GESTURE_TRANSLATION.get((g := results.get('final_prediction', 'неизвестен')), g)}\n\n"
+        # f"Время анализа: {results.get('processing_time', 0):.2f}с\n\n"
     )
 
     # Add hand predictions summary
     hand_predictions = results.get("hand_predictions", [])
     for hp in hand_predictions:
         prediction_text += (
-            f"Рука {hp['hand']}: {hp['class']} (уверенность: {hp['confidence']:.3f})\n"
+            f"### Рука {hp['hand']}: {hp['class']} (уверенность: {hp['confidence']:.3f})\n"
         )
 
     return (
@@ -1063,7 +1103,11 @@ with gr.Blocks(
                 height=600,  # Начальная высота
             )
         with gr.Column(scale=1):
-            prediction_output = gr.Textbox(label="Предсказания", lines=10, max_lines=20)
+            prediction_output = gr.Markdown(
+                label="Предсказания",
+                # lines=10,
+                # max_lines=20
+            )
 
     # Компонент визуализации внимания
     attention_output = gr.Image(
@@ -1126,6 +1170,7 @@ with gr.Blocks(
             probability_chart_output,  # Обновляем высоту диаграммы вероятностей
             attention_output,          # Обновляем высоту визуализации внимания
         ],
+        show_progress='hidden'
     )
 
     def clear_all():
