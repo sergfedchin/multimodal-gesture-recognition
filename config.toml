@@ -85,7 +85,7 @@ num_classes = 33
 dropout = 0.3
 
 # VSSD integration (only used if architecture="vssd")
-vssd_repo_path = "/home/serg_fedchn/Homework/thesis/VSSD"
+vssd_repo_path = "/home/jovyan/safedchin/dev/funcs/VSSD"
 # vssd_repo_path = "/home/daryumin/HandGestures_experiments/VSSD"
 pretrained_ckpt = ""
 

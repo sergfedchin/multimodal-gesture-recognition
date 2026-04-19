@@ -14,6 +14,16 @@ def image2tensor(image):
 
     return image
 
+
+def pad_bgr_bottom_right(image_bgr, target_h: int, target_w: int) -> np.ndarray:
+    """Pad BGR image with zeros on bottom and right to (target_h, target_w)."""
+    h, w = image_bgr.shape[:2]
+    if h > target_h or w > target_w:
+        raise ValueError(f"image ({h},{w}) larger than target ({target_h},{target_w})")
+    out = np.zeros((target_h, target_w, 3), dtype=image_bgr.dtype)
+    out[:h, :w] = image_bgr
+    return out
+
 def resize_1024(image):
     image = cv2.resize(image, (1024, 768), interpolation=cv2.INTER_LINEAR)
     return image

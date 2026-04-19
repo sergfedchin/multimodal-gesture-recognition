@@ -1,11 +1,13 @@
+import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from modules.ppd.models.depth_anything_v2.dpt import DepthAnythingV2
 from modules.ppd.models.dit import DiT
 from modules.ppd.utils.sampler import EulerSampler
 from modules.ppd.utils.schedule import LinearSchedule
 from modules.ppd.utils.timesteps import Timesteps
-from modules.ppd.utils.transform import image2tensor, resize_keep_aspect
+from modules.ppd.utils.transform import image2tensor, pad_bgr_bottom_right, resize_keep_aspect
 
 
 class PixelPerfectDepth(nn.Module):
@@ -55,10 +57,67 @@ class PixelPerfectDepth(nn.Module):
         image = image2tensor(resize_image)
         image = image.to(self.device)
         with torch.autocast(
-            device_type=self.device.type, dtype=torch.float16, enabled=True
+            device_type=self.device.type, dtype=torch.float16, enabled=use_fp16
         ):
             depth = self.forward_test(image)
         return depth, resize_image
+
+    @torch.no_grad()
+    def infer_images_batched(
+        self,
+        images_bgr,
+        target_sizes_hw,
+        use_fp16: bool = True,
+        return_uint8: bool = True,
+    ):
+        """
+        Batched depth inference with per-image resize_keep_aspect, pad to batch max H×W, one forward_test.
+
+        Args:
+            images_bgr: list of BGR uint8 arrays (e.g. person crops), same length as target_sizes_hw
+            target_sizes_hw: list of (H, W) original RGB crop sizes to upsample depth maps to
+            use_fp16: passed to autocast (same semantics as infer_image)
+            return_uint8: if True, return uint8 min–max maps; if False, float32 HW tensors (CPU) before normalization
+
+        Returns:
+            list[np.ndarray] or list[torch.Tensor]: depth maps per image
+        """
+        if not images_bgr:
+            return []
+        if len(images_bgr) != len(target_sizes_hw):
+            raise ValueError("images_bgr and target_sizes_hw must have the same length")
+
+        resized_list = [resize_keep_aspect(im) for im in images_bgr]
+        h_max = max(r.shape[0] for r in resized_list)
+        w_max = max(r.shape[1] for r in resized_list)
+
+        batch_parts = []
+        for r in resized_list:
+            padded = pad_bgr_bottom_right(r, h_max, w_max)
+            batch_parts.append(image2tensor(padded))
+        batch = torch.cat(batch_parts, dim=0).to(self.device)
+
+        with torch.autocast(
+            device_type=self.device.type, dtype=torch.float16, enabled=use_fp16
+        ):
+            depth = self.forward_test(batch)
+
+        out_maps = []
+        for i, (th, tw) in enumerate(target_sizes_hw):
+            d = depth[i : i + 1]
+            d = F.interpolate(d, size=(th, tw), mode="bilinear", align_corners=False)[
+                0, 0
+            ]
+            if not return_uint8:
+                out_maps.append(d.float().cpu())
+                continue
+            depth_np = d.float().cpu().numpy()
+            depth_normalized = (depth_np - depth_np.min()) / (
+                depth_np.max() - depth_np.min() + 1e-8
+            )
+            out_maps.append((depth_normalized * 255).astype(np.uint8))
+        return out_maps
+
 
     @torch.no_grad()
     def forward_test(self, image):
@@ -80,3 +139,45 @@ class PixelPerfectDepth(nn.Module):
         with torch.no_grad():
             semantics = self.semantics_encoder(image)
         return semantics
+
+
+def verify_infer_images_batched_parity(
+    model: "PixelPerfectDepth",
+    image_bgr,
+    target_hw,
+    seed: int = 42,
+    rtol: float = 0.05,
+    atol: float = 0.05,
+) -> None:
+    """Assert B=1 batched API matches single forward + interpolate (fp16-tolerant)."""
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+    resized = resize_keep_aspect(image_bgr)
+    t_single = image2tensor(resized).to(model.device)
+    with torch.autocast(
+        device_type=model.device.type, dtype=torch.float16, enabled=True
+    ):
+        d_single = model.forward_test(t_single)
+    d_single = F.interpolate(
+        d_single,
+        size=(target_hw[0], target_hw[1]),
+        mode="bilinear",
+        align_corners=False,
+    )[0, 0].float().cpu()
+
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+    batched = model.infer_images_batched(
+        [image_bgr], [target_hw], use_fp16=True, return_uint8=False
+    )
+    assert len(batched) == 1
+    torch.testing.assert_close(d_single, batched[0], rtol=rtol, atol=atol)
+
+    uint_maps = model.infer_images_batched(
+        [image_bgr], [target_hw], use_fp16=True, return_uint8=True
+    )
+    assert len(uint_maps) == 1 and uint_maps[0].shape == (target_hw[0], target_hw[1])
